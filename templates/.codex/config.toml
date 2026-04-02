@@ -1,0 +1,43 @@
+[features]
+multi_agent = true
+
+[agents]
+max_threads = 8
+max_depth = 1
+job_max_runtime_seconds = 2700
+
+# ── Built-in compatibility roles ──────────────────────────────────────────────
+
+[agents.default]
+description = "General-purpose fallback agent for planning, research, and execution."
+config_file = "agents/default.toml"
+
+[agents.explorer]
+description = "Read-only codebase mapper for scoping and dependency tracing before edits."
+config_file = "agents/explorer.toml"
+
+[agents.worker]
+description = "Execution worker for targeted implementation tasks under a validated plan."
+config_file = "agents/worker.toml"
+
+[agents.reviewer]
+description = "Read-only reviewer for regressions, risk, and missing verification evidence."
+config_file = "agents/reviewer.toml"
+
+# ── Specialized task roles ────────────────────────────────────────────────────
+
+[agents.planner]
+description = "Planning specialist — produces structured PLAN.md artifacts from context and research."
+config_file = "agents/planner.toml"
+
+[agents.researcher]
+description = "Research specialist — discovers constraints, docs, and integration unknowns before planning."
+config_file = "agents/researcher.toml"
+
+[agents.executor]
+description = "Implementation specialist — executes approved plans with minimal blast radius."
+config_file = "agents/executor.toml"
+
+[agents.verifier]
+description = "Independent verification specialist — runs tests, checks UAT criteria, reports residual risk."
+config_file = "agents/verifier.toml"
