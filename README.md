@@ -43,7 +43,7 @@ Every AI coding tool runs one model in one context. You hit a wall when the task
 
 shellmates splits the work the way a good team does:
 
-- **One agent thinks.** Claude holds the plan, reviews the work, decides what's next. Uses [GSD](https://github.com/obra/get-shit-done) to produce structured plans that sub-agents can execute without needing your entire conversation history.
+- **One agent thinks.** Claude holds the plan, reviews the work, decides what's next. Uses [GSD](https://github.com/gsd-build/get-shit-done) to produce structured plans that sub-agents can execute without needing your entire conversation history.
 - **Other agents build.** Gemini and Codex get a fresh context, a clear plan, and a specific job. They commit, signal done, and wait.
 - **The terminal is the meeting room.** tmux `send-keys` delivers tasks. `capture-pane` reads the replies. That's the whole protocol.
 
