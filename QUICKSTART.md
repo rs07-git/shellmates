@@ -1,6 +1,14 @@
-# Quickstart — From Zero to Orchestrating in 10 Minutes
+# Quickstart
 
-This guide walks you through installing everything, setting up your project, and running your first orchestrated workflow.
+> **Fastest path:** paste this into your AI agent and skip this guide entirely:
+> ```
+> Read https://raw.githubusercontent.com/rs07-git/shellmates/main/INIT.md and set up shellmates for this project.
+> ```
+> Your agent will do all of this automatically.
+
+---
+
+This guide is for people who want to understand what's happening and do it themselves.
 
 ---
 
@@ -48,14 +56,14 @@ Go to your project directory and copy in the instruction files:
 cd /path/to/your/project
 
 # Copy the orchestrator instructions (tells Claude how to run the workflow)
-cp /path/to/tmux-ai-orchestra/ORCHESTRATOR.md ./ORCHESTRATOR.md
+cp /path/to/shellmates/ORCHESTRATOR.md ./ORCHESTRATOR.md
 
 # Copy the sub-agent instructions (tells Gemini how to behave and signal back)
-cp /path/to/tmux-ai-orchestra/templates/GEMINI.md ./GEMINI.md
+cp /path/to/shellmates/templates/GEMINI.md ./GEMINI.md
 
 # If using Codex instead of (or alongside) Gemini:
-cp /path/to/tmux-ai-orchestra/templates/AGENTS.md ./AGENTS.md
-cp -r /path/to/tmux-ai-orchestra/templates/.codex ./.codex
+cp /path/to/shellmates/templates/AGENTS.md ./AGENTS.md
+cp -r /path/to/shellmates/templates/.codex ./.codex
 ```
 
 Now **edit `GEMINI.md`** and fill in your project details — the tech stack, key files, and any conventions Gemini needs to know. This is Gemini's only source of project context when it starts fresh.
@@ -93,7 +101,7 @@ After this you'll have a `.planning/` directory with `ROADMAP.md`, `STATE.md`, a
 From your project directory:
 
 ```bash
-bash /path/to/tmux-ai-orchestra/scripts/launch.sh
+bash /path/to/shellmates/scripts/launch.sh
 ```
 
 This creates a tmux session called `orchestra` with two side-by-side panes and starts Gemini CLI on the left and Claude Code on the right.
@@ -112,6 +120,27 @@ This creates a tmux session called `orchestra` with two side-by-side panes and s
 - Detach (leave running): `Ctrl+b` then `d`
 - Re-attach later: `tmux attach -t orchestra`
 - Kill session: `tmux kill-session -t orchestra`
+
+**Scrolling — fix this first or you'll go crazy:**
+
+By default, tmux intercepts scroll events and cycles through your shell history instead of scrolling the pane output. Fix it once:
+
+```bash
+# Add to ~/.tmux.conf (create the file if it doesn't exist):
+echo "set -g mouse on" >> ~/.tmux.conf
+
+# Apply without restarting:
+tmux source-file ~/.tmux.conf
+```
+
+With mouse mode on, you can scroll any pane normally. Click a pane to focus it, then scroll.
+
+**Keyboard scroll (no mouse / prefer keyboard):**
+1. `Ctrl+b [` — enter copy/scroll mode
+2. Arrow keys, `PgUp` / `PgDn`, or `Ctrl+u` / `Ctrl+d` to scroll
+3. `q` — exit copy mode and return to normal
+
+> **Why this matters:** when Gemini is executing a long task, you'll want to scroll back through its output to see what it did. Without mouse mode, you'll accidentally send keystrokes to the shell instead of scrolling.
 
 ---
 
@@ -147,7 +176,7 @@ The ORCHESTRATOR.md file in this project has your operating instructions.
 
 - Run the monitor in the background so you get live logs:
   ```bash
-  bash /path/to/tmux-ai-orchestra/scripts/monitor.sh > /tmp/orchestra.log 2>&1 &
+  bash /path/to/shellmates/scripts/monitor.sh > /tmp/orchestra.log 2>&1 &
   tail -f /tmp/orchestra.log
   ```
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launch.sh — Start or restore the tmux-ai-orchestra session
+# launch.sh — Start or restore the shellmates session
 #
 # Usage:
 #   ./scripts/launch.sh                    # 2-pane: Gemini + Claude

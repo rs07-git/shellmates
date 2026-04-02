@@ -20,7 +20,7 @@ When two tasks are independent, you can run them simultaneously and cut the tota
 Use the 4-pane session:
 
 ```bash
-bash /path/to/tmux-ai-orchestra/scripts/launch-full-team.sh
+bash /path/to/shellmates/scripts/launch-full-team.sh
 ```
 
 Session layout:

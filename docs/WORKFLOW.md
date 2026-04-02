@@ -7,7 +7,7 @@ When you give a single AI agent a large task, two things tend to go wrong:
 1. **Context drift** — after many edits the agent loses track of the original goal and starts making inconsistent decisions
 2. **No separation of concerns** — the same agent that writes code also decides *what* to write, which means bad architectural decisions get implemented before anyone reviews them
 
-The tmux-ai-orchestra pattern fixes both by splitting the job in two:
+The shellmates pattern fixes both by splitting the job in two:
 
 - **Claude** (orchestrator) thinks, plans, and reviews — but doesn't implement
 - **Gemini / Codex** (executor) implements from a concrete plan — but doesn't decide scope

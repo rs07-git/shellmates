@@ -50,7 +50,7 @@ It was killed or the machine restarted. Re-launch:
 
 ```bash
 cd /path/to/your/project
-bash /path/to/tmux-ai-orchestra/scripts/launch.sh
+bash /path/to/shellmates/scripts/launch.sh
 ```
 
 ### Can't detach from session

@@ -15,7 +15,25 @@ Your terminal. Multiple AI models. All talking to each other.
 
 Claude plans. Gemini builds. Codex verifies. They coordinate through your terminal using nothing but tmux — no APIs between them, no glue code, just agents passing messages like coworkers at adjacent desks.
 
-That's shellmates.
+---
+
+## Get started
+
+**Point your AI agent at this:**
+
+```
+Read https://raw.githubusercontent.com/rs07-git/shellmates/main/INIT.md and set up shellmates for this project.
+```
+
+That's it. Your agent will install the tools, update your project files, fill in the config, and drop a personalized tutorial in your terminal. No manual steps required.
+
+> Works with Claude Code, Gemini CLI, Codex, or any AI that can read a URL and run shell commands.
+
+---
+
+## Want to understand what's happening first?
+
+**→ [QUICKSTART.md](QUICKSTART.md)** — step-by-step walkthrough you can follow yourself
 
 ---
 
@@ -28,32 +46,6 @@ shellmates splits the work the way a good team does:
 - **One agent thinks.** Claude holds the plan, reviews the work, decides what's next. Uses [GSD](https://github.com/obra/get-shit-done) to produce structured plans that sub-agents can execute without needing your entire conversation history.
 - **Other agents build.** Gemini and Codex get a fresh context, a clear plan, and a specific job. They commit, signal done, and wait.
 - **The terminal is the meeting room.** tmux `send-keys` delivers tasks. `capture-pane` reads the replies. That's the whole protocol.
-
-You end up with parallel execution across providers, persistent orchestration that survives context resets, and a workflow that scales from one feature to a full product.
-
----
-
-## What you need
-
-```bash
-brew install tmux
-
-npm install -g @anthropic-ai/claude-code   # the orchestrator
-npm install -g @google/gemini-cli          # a shellmate
-npm install -g @openai/codex               # another shellmate (optional)
-
-npx get-shit-done-cc@latest                # planning framework
-```
-
-And API keys for whichever providers you're using.
-
----
-
-## Get started
-
-**→ [QUICKSTART.md](QUICKSTART.md)**
-
-Ten minutes from zero to your first orchestrated workflow.
 
 ---
 
@@ -94,10 +86,12 @@ The plan lives on disk. Sub-agents read it fresh every time. No conversation his
 
 ```
 shellmates/
-├── QUICKSTART.md          ← start here
-├── ORCHESTRATOR.md        ← drop into your project (Claude's playbook)
+├── INIT.md                ← agent-executable setup (point your AI here)
+├── QUICKSTART.md          ← human-readable setup guide
+├── ORCHESTRATOR.md        ← Claude's operating instructions (copied to your project)
 ├── templates/
-│   ├── GEMINI.md          ← drop into your project (Gemini's playbook)
+│   ├── CLAUDE.md          ← snippet added to your project's CLAUDE.md
+│   ├── GEMINI.md          ← filled in and added to your project root
 │   ├── AGENTS.md          ← for Codex
 │   └── .codex/            ← Codex multi-agent role configs
 ├── scripts/
@@ -115,7 +109,7 @@ shellmates/
 
 ## The protocol in one paragraph
 
-Claude sends a task by running `tmux send-keys -t pane "do X" Enter`. The sub-agent does the work and prints `PHASE_COMPLETE: Phase N — summary` when done. Claude polls with `tmux capture-pane -t pane -p | tail -20` to detect the signal. That's it. No framework, no SDK, no shared state. Just text in a terminal.
+Claude sends a task by running `tmux send-keys -t pane "do X" Enter`. The sub-agent does the work and prints `PHASE_COMPLETE: Phase N — summary` when done. Claude polls with `tmux capture-pane -t pane -p | tail -20` to detect the signal. No framework, no SDK, no shared state. Just text in a terminal.
 
 Full spec in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
