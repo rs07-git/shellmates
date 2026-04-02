@@ -1,99 +1,123 @@
-# tmux-ai-orchestra
+# shellmates
 
-**Multi-provider AI orchestration in your terminal.**
-
-Run Claude Code as a planning orchestrator while Gemini CLI and/or Codex execute the work — all in one tmux session, coordinating through terminal I/O.
+Your terminal. Multiple AI models. All talking to each other.
 
 ```
-┌──────────────────────────────────┬──────────────────────────────────┐
-│  GEMINI CLI       (pane 0.0)     │  CLAUDE CODE      (pane 0.1)     │
-│  sub-agent / executor            │  orchestrator / planner          │
-│                                  │                                  │
-│  > Reading PLAN.md...            │  > /gsd:plan-phase 3             │
-│  > Implementing auth endpoint    │  > Plan ready. Delegating...     │
-│  > Running tests... ✓            │  > Waiting for PHASE_COMPLETE    │
-│  PHASE_COMPLETE: Phase 3 done    │  > Reviewing output...           │
-│  AWAITING_INSTRUCTIONS           │  > Next: Phase 4                 │
-└──────────────────────────────────┴──────────────────────────────────┘
+┌─────────────────────────────┬─────────────────────────────┐
+│  gemini                     │  claude                     │
+│                             │                             │
+│  Reading the plan...        │  Planning phase 3...        │
+│  Writing auth.py...         │  Delegating to Gemini...    │
+│  Tests passing ✓            │  Waiting for the signal...  │
+│  PHASE_COMPLETE: auth done  │  Nice. On to phase 4.       │
+└─────────────────────────────┴─────────────────────────────┘
 ```
+
+Claude plans. Gemini builds. Codex verifies. They coordinate through your terminal using nothing but tmux — no APIs between them, no glue code, just agents passing messages like coworkers at adjacent desks.
+
+That's shellmates.
 
 ---
 
-## The Idea
+## Why
 
-Most AI coding tools either plan *or* execute, but not both cleanly. This setup splits the work:
+Every AI coding tool runs one model in one context. You hit a wall when the task gets big — context fills up, the model loses the thread, architectural decisions get buried in implementation noise.
 
-- **Claude Code** (right pane) — thinks, plans, coordinates. Uses the [GSD framework](https://github.com/obra/get-shit-done) to create structured plans. Reviews output. Decides what's next.
-- **Gemini CLI / Codex** (left pane) — executes. Reads the plan, writes code, runs tests, commits. Reports back.
+shellmates splits the work the way a good team does:
 
-The two agents communicate through tmux: Claude sends tasks via `tmux send-keys`, sub-agents signal completion with a `PHASE_COMPLETE:` line, and Claude reads their output with `tmux capture-pane`.
+- **One agent thinks.** Claude holds the plan, reviews the work, decides what's next. Uses [GSD](https://github.com/obra/get-shit-done) to produce structured plans that sub-agents can execute without needing your entire conversation history.
+- **Other agents build.** Gemini and Codex get a fresh context, a clear plan, and a specific job. They commit, signal done, and wait.
+- **The terminal is the meeting room.** tmux `send-keys` delivers tasks. `capture-pane` reads the replies. That's the whole protocol.
 
-This mirrors how Claude Code works internally with its sub-agents — but lets you bring in **any AI provider** as the executor.
-
----
-
-## Prerequisites
-
-- macOS or Linux with [tmux](https://github.com/tmux/tmux) installed
-- [Claude Code](https://claude.ai/code) with an Anthropic API key
-- [Gemini CLI](https://github.com/google-gemini/gemini-cli) with a Google API key (or [Codex CLI](https://github.com/openai/codex) with an OpenAI key)
-- [GSD framework](https://github.com/obra/get-shit-done) — the planning layer that makes this workflow powerful
+You end up with parallel execution across providers, persistent orchestration that survives context resets, and a workflow that scales from one feature to a full product.
 
 ---
 
-## Quickstart
+## What you need
 
-**→ [QUICKSTART.md](QUICKSTART.md) — get running in 10 minutes**
+```bash
+brew install tmux
 
----
+npm install -g @anthropic-ai/claude-code   # the orchestrator
+npm install -g @google/gemini-cli          # a shellmate
+npm install -g @openai/codex               # another shellmate (optional)
 
-## How the Workflow Flows
-
-```
-You tell Claude what to build
-        │
-        ▼
-Claude runs /gsd:plan-phase        ← structured plan in .planning/phases/
-        │
-        ▼
-Claude delegates plan to Gemini    ← tmux send-keys with plan context
-        │
-        ▼
-Gemini executes, commits           ← reads plan, writes code, runs tests
-        │
-        ▼
-Gemini signals PHASE_COMPLETE      ← Claude polls with capture-pane
-        │
-        ▼
-Claude reviews + decides next step ← check git log, read output, continue
+npx get-shit-done-cc@latest                # planning framework
 ```
 
+And API keys for whichever providers you're using.
+
 ---
 
-## Files in This Package
+## Get started
+
+**→ [QUICKSTART.md](QUICKSTART.md)**
+
+Ten minutes from zero to your first orchestrated workflow.
+
+---
+
+## How it works
 
 ```
-tmux-ai-orchestra/
-├── QUICKSTART.md                  ← start here
-├── ORCHESTRATOR.md                ← drop into your project (Claude's instructions)
-├── README.md                      ← this file
-│
-├── scripts/
-│   ├── launch.sh                  ← start a 2-pane session
-│   ├── launch-full-team.sh        ← start a 4-pane session
-│   └── monitor.sh                 ← background watcher
-│
+You describe what to build
+        ↓
+Claude plans it with /gsd:plan-phase  →  PLAN.md on disk
+        ↓
+Claude sends the plan to Gemini       →  tmux send-keys
+        ↓
+Gemini implements, tests, commits
+        ↓
+Gemini signals: PHASE_COMPLETE        →  Claude reads with capture-pane
+        ↓
+Claude reviews, decides next step
+        ↓
+repeat
+```
+
+The plan lives on disk. Sub-agents read it fresh every time. No conversation history required, no context bleed between agents, no awkward handoffs.
+
+---
+
+## Mix and match
+
+| Orchestrator | Executor(s) | Good for |
+|---|---|---|
+| Claude | Gemini | Large context tasks, Google Search grounding |
+| Claude | Codex | Sandboxed execution, internal multi-agent roles |
+| Claude | Gemini + Codex | Parallel tracks — implement and verify simultaneously |
+| Claude | Multiple Gemini panes | Fan-out across many files at once |
+
+---
+
+## What's in the box
+
+```
+shellmates/
+├── QUICKSTART.md          ← start here
+├── ORCHESTRATOR.md        ← drop into your project (Claude's playbook)
 ├── templates/
-│   ├── GEMINI.md                  ← drop into your project (Gemini's instructions)
-│   ├── AGENTS.md                  ← drop into your project (Codex's instructions)
-│   └── .codex/                    ← Codex multi-agent role definitions
-│
+│   ├── GEMINI.md          ← drop into your project (Gemini's playbook)
+│   ├── AGENTS.md          ← for Codex
+│   └── .codex/            ← Codex multi-agent role configs
+├── scripts/
+│   ├── launch.sh          ← spin up a 2-pane session
+│   ├── launch-full-team.sh ← spin up a 4-pane session
+│   └── monitor.sh         ← watch for signals in the background
 └── docs/
-    ├── WORKFLOW.md                ← deep dive on the plan/execute split
-    ├── PROTOCOL.md                ← full tmux IPC reference
-    ├── ROLES.md                   ← when to use each agent/pattern
-    └── TROUBLESHOOTING.md         ← common issues and fixes
+    ├── WORKFLOW.md        ← the plan/execute split explained
+    ├── PROTOCOL.md        ← full tmux IPC reference
+    ├── ROLES.md           ← patterns and when to use each
+    └── TROUBLESHOOTING.md
 ```
+
+---
+
+## The protocol in one paragraph
+
+Claude sends a task by running `tmux send-keys -t pane "do X" Enter`. The sub-agent does the work and prints `PHASE_COMPLETE: Phase N — summary` when done. Claude polls with `tmux capture-pane -t pane -p | tail -20` to detect the signal. That's it. No framework, no SDK, no shared state. Just text in a terminal.
+
+Full spec in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
