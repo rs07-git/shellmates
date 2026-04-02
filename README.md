@@ -15,6 +15,8 @@ Your terminal. Multiple AI models. All talking to each other.
 
 Claude plans. Gemini builds. Codex verifies. They coordinate through your terminal using nothing but tmux — no APIs between them, no glue code, just agents passing messages like coworkers at adjacent desks.
 
+![shellmates demo](docs/demo.gif)
+
 ---
 
 ## Get started
