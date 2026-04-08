@@ -43,8 +43,11 @@ tmux send-keys -t orchestra:0.0 "Your task description here." Enter
 
 The text is typed directly into the sub-agent's terminal as if a human typed it.
 
-**For longer tasks, write to a temp file first:**
+**For anything longer than one line — always use a file:**
 
+Sending multiline text via `send-keys "$(cat file)" Enter` is unreliable. The trailing `Enter` gets consumed as part of the paste, not as a submit keystroke. Use the agent's native file-inclusion syntax instead — it's a single line and always submits correctly.
+
+**Gemini CLI** supports `@filepath`:
 ```bash
 cat > /tmp/task.txt << 'EOF'
 Execute Phase 3 — User Authentication.
@@ -57,7 +60,17 @@ When everything is done and tests pass, output:
 PHASE_COMPLETE: Phase 3 — <one-line summary>
 EOF
 
-tmux send-keys -t orchestra:0.0 "$(cat /tmp/task.txt)" Enter
+tmux send-keys -t orchestra:0.0 "@/tmp/task.txt" Enter
+```
+
+**Codex CLI** supports `--file` or direct multi-line input via its own prompt — use the same `@` syntax if supported, or keep tasks under one line when possible.
+
+**Claude Code** — paste context works fine; Claude handles multiline input reliably.
+
+If you must use `$(cat file)` with `send-keys`, always follow with a **separate** bare Enter call:
+```bash
+tmux send-keys -t orchestra:0.0 "$(cat /tmp/task.txt)"
+tmux send-keys -t orchestra:0.0 "" Enter
 ```
 
 ---

@@ -56,37 +56,45 @@ If GSD isn't initialized yet, run `/gsd:new-project` first.
 
 ### 2. Delegate to a sub-agent
 
-Send the task to Gemini with enough context to work from a fresh session:
+Write the task to a file, then dispatch it with one command:
 
 ```bash
-tmux send-keys -t orchestra:0.0 "Please execute Phase N from our project plan.
+cat > /tmp/task.txt << 'EOF'
+Please execute Phase N from our project plan.
 
-The plan is at .planning/phases/N-slug/PLAN.md — read it first.
+Plan: .planning/phases/N-slug/PLAN.md — read it first.
+Context: GEMINI.md at the project root.
 
-Project context is in GEMINI.md at the project root.
+Commit after each logical step.
+When done, output: PHASE_COMPLETE: Phase N — <one-line summary>
+EOF
 
-Commit after each logical step. When fully done, output:
-PHASE_COMPLETE: Phase N — <one-line summary>
-
-Then output AWAITING_INSTRUCTIONS." Enter
+bash scripts/dispatch.sh --pane orchestra:0.0 --task-file /tmp/task.txt
 ```
 
-> **Important:** Sub-agents start fresh — they don't have your conversation context. The PLAN.md and GEMINI.md are their only sources of truth. Make sure both are complete.
+`dispatch.sh` handles everything automatically:
+- Preflight check: verifies an agent is actually running (not a bare shell)
+- Correct submission: uses `@filepath` for Gemini (avoids the multiline paste bug)
+- Ping-back: appends the AGENT_PING instruction so the agent notifies you when done — **no polling needed**
 
-### 3. Monitor for completion
+> **Important:** Sub-agents start fresh — they don't have your conversation context. The PLAN.md and GEMINI.md are their only sources of truth. Make sure both are complete before dispatching.
 
-Poll for the completion signal:
+### 3. Wait for the AGENT_PING
 
-```bash
-tmux capture-pane -t orchestra:0.0 -p | tail -20
+The sub-agent will notify you directly by running:
+```
+tmux send-keys -t [your-pane] "AGENT_PING: Phase N complete. Files changed: X. Tests: pass. — AWAITING_INSTRUCTIONS" Enter
 ```
 
-Or run the monitor in the background (from your terminal, not as a task):
+This physically types the ping into **your** terminal. You don't need to poll. Just wait for it to appear.
+
+If you want a background watcher as a fallback:
 ```bash
 bash scripts/monitor.sh orchestra:0.0 > /tmp/monitor.log 2>&1 &
+tail -f /tmp/monitor.log
 ```
 
-Check git for real evidence of completion:
+Verify with git regardless:
 ```bash
 git log --oneline -5
 git diff HEAD~1 --stat
