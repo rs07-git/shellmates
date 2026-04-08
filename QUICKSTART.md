@@ -172,6 +172,36 @@ The ORCHESTRATOR.md file in this project has your operating instructions.
 
 ---
 
+---
+
+## When you're done
+
+Sessions persist in tmux until explicitly closed. A stale session from last week can confuse your next Claude orchestration — especially if it finds a `shellmates` session already open and tries to use it.
+
+**Check what's running:**
+```bash
+bash /path/to/shellmates/scripts/status.sh
+```
+
+Output:
+```
+Shellmates sessions:
+
+  #  name          purpose                       project                  agents  age    status
+  ─────────────────────────────────────────────────────────────────────────────────────────────
+  1  shellmates    haiku-duel demo               ~/Desktop/shellmates     gemini  6d     gemini idle, claude idle
+  2  carebuddy     phase-182 production fixes    ~/Projects               codex   2h     codex active (node)
+```
+
+**Close sessions you're done with:**
+```bash
+bash /path/to/shellmates/scripts/teardown.sh
+```
+
+It shows you each session with its purpose and project, then asks which to close. You pick — nothing is killed automatically. This handles the case where you're running multiple shellmates sessions in parallel for different projects.
+
+---
+
 ## What to do next
 
 - Run the monitor in the background so you get live logs:

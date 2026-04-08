@@ -103,6 +103,36 @@ Once `PHASE_COMPLETE` appears:
 
 ---
 
+## Command Syntax by Agent Type
+
+Different CLIs use different prefixes for GSD commands. Match the syntax to the agent you're dispatching to:
+
+| Agent | GSD command syntax |
+|-------|-------------------|
+| Claude Code | `/gsd:plan-phase N` then `/gsd:execute-phase N` |
+| Gemini CLI | `/gsd:plan-phase N` then `/gsd:execute-phase N` |
+| Codex CLI | `$gsd-plan-phase N` then `$gsd-execute-phase N` |
+
+Sending the wrong prefix causes the agent to silently ignore the command and do something else.
+
+---
+
+## Preflight: Verify the target pane before dispatching
+
+Before sending any task, confirm the right process is actually running in the target pane:
+
+```bash
+tmux display-message -p -t orchestra:0.0 '#{pane_current_command}'
+```
+
+Expected output: `gemini`, `codex`, or `node` (Codex runs as node). If you see `bash` or `zsh`, the agent exited — restart it before dispatching:
+
+```bash
+tmux send-keys -t orchestra:0.0 "gemini" Enter   # or codex
+```
+
+---
+
 ## Sending Tasks
 
 Always include in every task you delegate:
@@ -178,6 +208,24 @@ Never run parallel tasks that touch the same files — merge conflicts are painf
 **When to use `/gsd:execute-phase` vs. delegating to Gemini:**
 - Use `/gsd:execute-phase` for small, well-understood phases where you want Claude to do it
 - Delegate to Gemini for large phases, parallel work, or when you want to free up Claude's context
+
+---
+
+## Session Lifecycle
+
+**Check all active sessions at any time:**
+```bash
+bash scripts/status.sh
+```
+
+Shows every shellmates session with its purpose, project, agent status, and age. Useful when you're unsure if a session from earlier work is still open.
+
+**Close sessions when work is done:**
+```bash
+bash scripts/teardown.sh
+```
+
+Shows each session with context and asks which to close. Handles multiple parallel sessions — you choose per session, nothing is killed automatically.
 
 ---
 
