@@ -151,24 +151,22 @@ Click into the **right pane (Claude)** and tell it what you want to build.
 ### Example prompt to Claude:
 
 ```
-I want to add user authentication to this app.
-
-Please:
-1. Use /gsd:plan-phase to create a plan for this feature
-2. Once the plan is ready, delegate it to Gemini in pane orchestra:0.0
-3. Wait for Gemini to signal PHASE_COMPLETE
-4. Report back what was done and whether I should review anything
+I want to add user authentication to this app. Spin up a team to handle it.
 
 The ORCHESTRATOR.md file in this project has your operating instructions.
 ```
 
+That's it. Claude reads the orchestrator instructions and handles the rest.
+
 ### What happens next:
 
 1. **Claude runs `/gsd:plan-phase`** — produces a structured `PLAN.md` in `.planning/phases/`
-2. **Claude sends the plan to Gemini** via `tmux send-keys -t orchestra:0.0`
+2. **Claude runs `spawn-team.sh`** — creates a new tmux session with Gemini, dispatches the plan
 3. **Gemini reads the plan**, implements the feature, runs tests, commits
-4. **Gemini outputs `PHASE_COMPLETE:`** — Claude detects this via `tmux capture-pane`
-5. **Claude reviews** the git log and output, reports to you
+4. **Gemini sends `AGENT_PING`** — types the result directly into Claude's terminal
+5. **Claude reviews** the git log and reports back to you
+
+You don't need to know any tmux commands. Claude handles session creation, agent startup, task dispatch, and result collection.
 
 ---
 

@@ -56,7 +56,9 @@ If GSD isn't initialized yet, run `/gsd:new-project` first.
 
 ### 2. Delegate to a sub-agent
 
-Write the task to a file, then dispatch it with one command:
+**Option A — One command (recommended):**
+
+If a session isn't running yet, `spawn-team.sh` creates it, starts the agent, and dispatches the task in one shot:
 
 ```bash
 cat > /tmp/task.txt << 'EOF'
@@ -69,10 +71,18 @@ Commit after each logical step.
 When done, output: PHASE_COMPLETE: Phase N — <one-line summary>
 EOF
 
+bash scripts/spawn-team.sh --task-file /tmp/task.txt --project /path/to/project
+```
+
+**Option B — Dispatch to an existing session:**
+
+If a session is already running (check with `bash scripts/status.sh`), dispatch directly:
+
+```bash
 bash scripts/dispatch.sh --pane orchestra:0.0 --task-file /tmp/task.txt
 ```
 
-`dispatch.sh` handles everything automatically:
+Both scripts handle everything automatically:
 - Preflight check: verifies an agent is actually running (not a bare shell)
 - Correct submission: uses `@filepath` for Gemini (avoids the multiline paste bug)
 - Ping-back: appends the AGENT_PING instruction so the agent notifies you when done — **no polling needed**

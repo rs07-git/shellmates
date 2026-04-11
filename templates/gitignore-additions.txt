@@ -1,0 +1,2 @@
+# Shellmates — add these to your project .gitignore
+.shellmates/tasks/

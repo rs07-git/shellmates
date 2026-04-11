@@ -90,11 +90,23 @@ tmux select-pane -t "$CLAUDE_PANE" -T "orchestrator (claude)"
 # Enable pane border titles
 tmux set-option -w -t "$SESSION:0" pane-border-status top 2>/dev/null || true
 
-# Start sub-agent in left pane
+# Read permission mode from config
+CONFIG_FILE="${HOME}/.shellmates/config.json"
+PERMISSION_MODE=$(python3 -c "
+import json, os
+cfg = '${CONFIG_FILE}'
+if os.path.exists(cfg):
+    d = json.load(open(cfg))
+    print(d.get('permission_mode', 'default'))
+else:
+    print('default')
+" 2>/dev/null || echo "default")
+
+# Start sub-agent with appropriate permission flags
 if [[ "$SUB_AGENT" == "codex" ]]; then
-  tmux send-keys -t "$AGENT_PANE" "codex" Enter
+  [[ "$PERMISSION_MODE" == "bypass" ]] && tmux send-keys -t "$AGENT_PANE" "codex --full-auto" Enter || tmux send-keys -t "$AGENT_PANE" "codex" Enter
 else
-  tmux send-keys -t "$AGENT_PANE" "gemini" Enter
+  [[ "$PERMISSION_MODE" == "bypass" ]] && tmux send-keys -t "$AGENT_PANE" "gemini --yolo" Enter || tmux send-keys -t "$AGENT_PANE" "gemini" Enter
 fi
 
 # Wait for agent shell to initialize, then verify it launched
@@ -155,21 +167,17 @@ with open(manifest_file, "w") as f:
 PYEOF
 
 echo ""
-echo "Session registered. Use 'bash scripts/status.sh' to see all active sessions."
-echo ""
-echo "Tips:"
-echo "  Switch panes:          Ctrl+b then arrow keys"
-echo "  Detach (keep running): Ctrl+b then d"
-echo "  Re-attach later:       tmux attach -t $SESSION"
-echo "  Check all sessions:    bash scripts/status.sh"
-echo "  Close when done:       bash scripts/teardown.sh"
-echo ""
-echo "Next steps:"
-echo "  1. In Claude's pane (right), tell it what you want to build"
-echo "  2. Claude will use /gsd:plan-phase to plan, then delegate to the sub-agent"
-echo "  3. See QUICKSTART.md for a full walkthrough"
+echo "Session registered."
 echo ""
 
-# Focus the orchestrator pane and attach
-tmux select-pane -t "$CLAUDE_PANE"
-tmux attach-session -t "$SESSION"
+# Show or open the session view automatically
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "$SCRIPT_DIR/view-session.sh" "$SESSION" "$CLAUDE_PANE"
+
+echo ""
+echo "Tips:"
+echo "  Switch panes:   Ctrl+b then arrow keys"
+echo "  Detach:         Ctrl+b then d"
+echo "  Re-attach:      tmux attach -t $SESSION"
+echo "  All sessions:   bash scripts/status.sh"
+echo "  Close session:  bash scripts/teardown.sh"
