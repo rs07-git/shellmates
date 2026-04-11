@@ -64,6 +64,16 @@ program
     await status()
   })
 
+// ── shellmates install-hook ──────────────────────────────────────────────────
+program
+  .command('install-hook')
+  .description('Install Claude Code PostToolUse hook for native AGENT_PING notifications')
+  .option('--force', 'Overwrite existing hook and re-add settings entry')
+  .action(async (opts) => {
+    const { installHook } = await import('../lib/commands/install-hook.js')
+    await installHook(opts)
+  })
+
 // ── shellmates teardown ──────────────────────────────────────────────────────
 program
   .command('teardown [session]')
