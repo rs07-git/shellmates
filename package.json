@@ -2,12 +2,24 @@
   "name": "shellmates",
   "version": "0.1.0",
   "description": "Seamless tmux multi-agent orchestration for Claude, Gemini, and Codex",
-  "keywords": ["tmux", "ai", "agents", "claude", "gemini", "codex", "orchestration"],
-  "homepage": "https://github.com/rohithsathyanarayana/shellmates",
+  "keywords": [
+    "tmux",
+    "ai",
+    "agents",
+    "claude",
+    "gemini",
+    "codex",
+    "orchestration"
+  ],
+  "homepage": "https://github.com/rs07-git/shellmates",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rs07-git/shellmates.git"
+  },
   "license": "MIT",
   "type": "module",
   "bin": {
-    "shellmates": "./bin/shellmates.js"
+    "shellmates": "bin/shellmates.js"
   },
   "files": [
     "bin/",
