@@ -25,17 +25,17 @@ if (isWelcome) {
     `  ${chalk.bold(name.padEnd(16))}${chalk.dim(desc)}`
 
   console.log(chalk.dim('  COMMANDS'))
+  console.log(cmd('spawn',         'Start a session — Claude asks what you want to work on'))
   console.log(cmd('init',          'First-time setup — create config and directories'))
   console.log(cmd('config',        'Configure agents, orchestrator, and permission mode'))
-  console.log(cmd('spawn',         'Dispatch a task to a worker agent in a new tmux session'))
   console.log(cmd('status',        'Show active sessions and inbox results'))
   console.log(cmd('install-hook',  'Wire up native Claude Code AGENT_PING notifications'))
   console.log(cmd('teardown',      'Kill shellmates tmux sessions'))
   console.log(cmd('update',        'Update shellmates to the latest version'))
   console.log('')
   console.log(chalk.dim('  EXAMPLES'))
-  console.log(`  ${chalk.dim('shellmates spawn --task "Add dark mode" --agent gemini')}`)
-  console.log(`  ${chalk.dim('shellmates spawn --task-file plan.md --watch')}`)
+  console.log(`  ${chalk.dim('shellmates spawn')}                          ${chalk.dim('# natural-language intake with Claude')}`)
+  console.log(`  ${chalk.dim('shellmates spawn --task "Add dark mode"')}   ${chalk.dim('# direct dispatch to default agent')}`)
   console.log(`  ${chalk.dim('shellmates status')}`)
   console.log('')
   console.log('  ' + chalk.dim('shellmates <command> --help') + chalk.dim(' for command details.'))
@@ -86,15 +86,21 @@ program
 // ── shellmates spawn ─────────────────────────────────────────────────────────
 program
   .command('spawn')
-  .description('Dispatch a task to a worker agent in a new tmux session')
-  .option('-t, --task <text>', 'Inline task text to dispatch')
-  .option('-f, --task-file <path>', 'Path to a file containing the task')
-  .option('-a, --agent <name>', 'Override agent for this task (gemini|codex)')
-  .option('-s, --session <name>', 'tmux session name (default: shellmates-<ts>)')
-  .option('-p, --project <path>', 'Project directory for the worker (default: cwd)')
-  .option('-w, --watch', 'Wait and print result when the agent finishes')
+  .description('Start a session — Claude interviews you and dispatches agents, or pass --task for direct dispatch')
+  .option('-t, --task <text>', 'Direct task text (skips intake, dispatches immediately)')
+  .option('-f, --task-file <path>', 'Path to a task file (skips intake, dispatches immediately)')
+  .option('-a, --agent <name>', 'Override agent for direct dispatch (gemini|codex)')
+  .option('-s, --session <name>', 'tmux session name')
+  .option('-p, --project <path>', 'Project directory (default: cwd)')
+  .option('-w, --watch', 'Wait and print result when agent finishes')
   .option('--no-ping', 'Skip background inbox watcher')
   .action(async (opts) => {
+    // No task provided → open the orchestrator intake (pond mode)
+    if (!opts.task && !opts.taskFile) {
+      const { pond } = await import('../lib/commands/pond.js')
+      await pond({ session: opts.session, project: opts.project })
+      return
+    }
     const { spawn } = await import('../lib/commands/spawn.js')
     await spawn({
       task: opts.task,
@@ -105,6 +111,17 @@ program
       watch: opts.watch,
       noPing: !opts.ping,
     })
+  })
+
+// ── shellmates pond (alias for spawn with no task) ───────────────────────────
+program
+  .command('pond')
+  .description('Start an orchestrator session — Claude asks what you want to work on')
+  .option('-s, --session <name>', 'tmux session name')
+  .option('-p, --project <path>', 'Project directory (default: cwd)')
+  .action(async (opts) => {
+    const { pond } = await import('../lib/commands/pond.js')
+    await pond({ session: opts.session, project: opts.project })
   })
 
 // ── shellmates status ────────────────────────────────────────────────────────
