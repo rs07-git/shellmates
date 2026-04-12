@@ -1,6 +1,6 @@
 {
   "name": "shellmates",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Seamless tmux multi-agent orchestration for Claude, Gemini, and Codex",
   "keywords": [
     "tmux",

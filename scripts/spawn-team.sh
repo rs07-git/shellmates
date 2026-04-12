@@ -145,26 +145,66 @@ echo "  Task:    $PURPOSE"
 [[ "$NO_PING" == "false" ]] && echo "  Ping:    $PING_BACK_PANE"
 echo ""
 
-# ── Create session (or window if already inside tmux) ────────────────────────
+# ── Create pane / session ─────────────────────────────────────────────────────
+#
+# Pond layout (inside tmux):
+#   ┌──────────────────┬────────────────────┐
+#   │                  │   Executor 1       │  ← 1st spawn: split right
+#   │   Orchestrator   ├────────────────────┤
+#   │   (full height)  │   Executor 2       │  ← 2nd spawn: split bottom-right
+#   └──────────────────┴────────────────────┘
+#   3rd+ executor → new tmux window (Ctrl+B n to reach)
+#
+# Outside tmux: creates a normal detached session.
 
 PANE_2=""
+IN_NEW_WINDOW=false
+
 if [[ "$INSIDE_TMUX" == "true" ]]; then
-  # Inside a pond session — open agent directly as a new window in this session.
-  # No attach tricks, no separate sessions. User presses Ctrl+B n to reach it.
-  WINDOW_NAME="$AGENT"
-  tmux new-window -t "$PARENT_SESSION" -n "$WINDOW_NAME" -c "$PROJECT_DIR"
-  PANE_1=$(tmux list-panes -t "$PARENT_SESSION:$WINDOW_NAME" -F '#{pane_id}' | sed -n '1p')
-  tmux select-pane -t "$PANE_1" -T "worker-1 ($AGENT)" 2>/dev/null || true
-  if [[ "$WORKERS" -eq 2 ]]; then
-    tmux split-window -h -t "$PARENT_SESSION:$WINDOW_NAME" -c "$PROJECT_DIR"
-    tmux select-layout -t "$PARENT_SESSION:$WINDOW_NAME" even-horizontal
-    PANE_2=$(tmux list-panes -t "$PARENT_SESSION:$WINDOW_NAME" -F '#{pane_id}' | sed -n '2p')
-    tmux select-pane -t "$PANE_2" -T "worker-2 ($AGENT)" 2>/dev/null || true
+  PANE_COUNT=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | wc -l | tr -d ' ')
+
+  if [[ $PANE_COUNT -eq 1 ]]; then
+    # ── First executor: split right ──────────────────────────────────────────
+    ORCH_PANE=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | head -1)
+    tmux split-window -h -t "$ORCH_PANE" -c "$PROJECT_DIR" -p 50
+    PANE_1=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | tail -1)
+    # Enable pane borders so titles are visible
+    tmux set-option -w -t "$PARENT_SESSION:0" pane-border-status top 2>/dev/null || true
+    tmux select-pane -t "$ORCH_PANE" -T "orchestrator" 2>/dev/null || true
+
+  elif [[ $PANE_COUNT -eq 2 ]]; then
+    # ── Second executor: split bottom-right ──────────────────────────────────
+    RIGHT_PANE=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | tail -1)
+    tmux split-window -v -t "$RIGHT_PANE" -c "$PROJECT_DIR"
+    PANE_1=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | tail -1)
+
+  else
+    # ── 3rd+ executor: overflow to a new window ──────────────────────────────
+    WINDOW_NAME="agents"
+    WIN_NUM=2
+    while tmux list-windows -t "$PARENT_SESSION" -F '#{window_name}' 2>/dev/null | grep -qx "$WINDOW_NAME"; do
+      WINDOW_NAME="agents-$WIN_NUM"
+      WIN_NUM=$((WIN_NUM + 1))
+    done
+    tmux new-window -t "$PARENT_SESSION" -n "$WINDOW_NAME" -c "$PROJECT_DIR"
+    PANE_1=$(tmux list-panes -t "$PARENT_SESSION:$WINDOW_NAME" -F '#{pane_id}' | head -1)
+    IN_NEW_WINDOW=true
+    echo "  Right side full — new window '$WINDOW_NAME' (Ctrl+B n to reach)"
   fi
-  # Return focus to the orchestrator window so Claude's output stays visible
-  tmux select-window -t "$PARENT_SESSION:0"
+
+  # Label the agent pane
+  tmux select-pane -t "$PANE_1" -T "$AGENT" 2>/dev/null || true
+
+  # Return focus to orchestrator
+  if [[ "$IN_NEW_WINDOW" == "true" ]]; then
+    tmux select-window -t "$PARENT_SESSION:0"
+  else
+    ORCH_PANE=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | head -1)
+    tmux select-pane -t "$ORCH_PANE"
+  fi
+
 else
-  # Not inside tmux — create a normal detached session
+  # ── Outside tmux: create a normal detached session ────────────────────────
   tmux new-session -d -s "$SESSION" -c "$PROJECT_DIR"
   tmux set-option -w -t "$SESSION:0" pane-border-status top 2>/dev/null || true
   PANE_1=$(tmux list-panes -t "$SESSION:0" -F '#{pane_id}' | sed -n '1p')
@@ -312,12 +352,19 @@ echo "Agent spawned: $SESSION"
 echo ""
 
 if [[ "$INSIDE_TMUX" == "true" ]]; then
-  echo "  ┌─────────────────────────────────────────────┐"
-  echo "  │  Agent is running in this session           │"
-  echo "  │  Ctrl+B n  → switch to agent window        │"
-  echo "  │  Ctrl+B p  → switch back to orchestrator   │"
-  echo "  │  Ctrl+B w  → pick from window list         │"
-  echo "  └─────────────────────────────────────────────┘"
+  if [[ "$IN_NEW_WINDOW" == "true" ]]; then
+    echo "  ┌─────────────────────────────────────────────┐"
+    echo "  │  Agent opened in a new window               │"
+    echo "  │  Ctrl+B n  → jump to agent window          │"
+    echo "  │  Ctrl+B p  → back to orchestrator          │"
+    echo "  └─────────────────────────────────────────────┘"
+  else
+    echo "  ┌─────────────────────────────────────────────┐"
+    echo "  │  Agent pane added to this window            │"
+    echo "  │  Ctrl+B ←→ → move between panes            │"
+    echo "  │  Ctrl+B z  → zoom a pane to full screen    │"
+    echo "  └─────────────────────────────────────────────┘"
+  fi
 else
   bash "$SCRIPT_DIR/view-session.sh" "$SESSION" "$PANE_1"
 fi
