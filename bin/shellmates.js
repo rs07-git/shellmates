@@ -7,10 +7,62 @@ import { fileURLToPath } from 'url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'))
 
+// ── Bare call or top-level --help/-h → custom welcome screen ─────────────────
+const args = process.argv.slice(2)
+const isWelcome = args.length === 0 || args[0] === '--help' || args[0] === '-h' || args[0] === 'help'
+
+if (isWelcome) {
+  const chalk = (await import('chalk')).default
+  const { printLogo } = await import('../lib/utils/logo.js')
+  const { checkUpdate } = await import('../lib/utils/update-check.js')
+  const { existsSync } = await import('fs')
+  const { join: pathJoin } = await import('path')
+  const { homedir } = await import('os')
+
+  printLogo(pkg.version)
+
+  const cmd = (name, desc) =>
+    `  ${chalk.bold(name.padEnd(16))}${chalk.dim(desc)}`
+
+  console.log(chalk.dim('  COMMANDS'))
+  console.log(cmd('init',          'First-time setup — create config and directories'))
+  console.log(cmd('config',        'Configure agents, orchestrator, and permission mode'))
+  console.log(cmd('spawn',         'Dispatch a task to a worker agent in a new tmux session'))
+  console.log(cmd('status',        'Show active sessions and inbox results'))
+  console.log(cmd('install-hook',  'Wire up native Claude Code AGENT_PING notifications'))
+  console.log(cmd('teardown',      'Kill shellmates tmux sessions'))
+  console.log(cmd('update',        'Update shellmates to the latest version'))
+  console.log('')
+  console.log(chalk.dim('  EXAMPLES'))
+  console.log(`  ${chalk.dim('shellmates spawn --task "Add dark mode" --agent gemini')}`)
+  console.log(`  ${chalk.dim('shellmates spawn --task-file plan.md --watch')}`)
+  console.log(`  ${chalk.dim('shellmates status')}`)
+  console.log('')
+  console.log('  ' + chalk.dim('shellmates <command> --help') + chalk.dim(' for command details.'))
+  console.log('')
+
+  // First-run nudge
+  const configPath = pathJoin(homedir(), '.shellmates', 'config.json')
+  if (!existsSync(configPath)) {
+    console.log(chalk.yellow('  ~ Not set up yet.') + '  Run ' + chalk.bold('shellmates init') + ' to get started.')
+    console.log('')
+  }
+
+  // Update notice (non-blocking, cached — won't slow you down)
+  const update = await checkUpdate(pkg.version)
+  if (update) {
+    console.log(chalk.cyan(`  ✨ Update available: ${chalk.dim(update.current)} → ${chalk.bold(update.latest)}`))
+    console.log(chalk.dim('     shellmates update'))
+    console.log('')
+  }
+
+  process.exit(0)
+}
+
 program
   .name('shellmates')
   .description('Seamless tmux multi-agent orchestration')
-  .version(pkg.version)
+  .version(pkg.version, '-v, --version', 'Print version number')
 
 // ── shellmates init ──────────────────────────────────────────────────────────
 program
@@ -72,6 +124,15 @@ program
   .action(async (opts) => {
     const { installHook } = await import('../lib/commands/install-hook.js')
     await installHook(opts)
+  })
+
+// ── shellmates update ────────────────────────────────────────────────────────
+program
+  .command('update')
+  .description('Update shellmates to the latest version')
+  .action(async () => {
+    const { update } = await import('../lib/commands/update.js')
+    await update()
   })
 
 // ── shellmates teardown ──────────────────────────────────────────────────────
