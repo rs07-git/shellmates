@@ -39,6 +39,15 @@ PING_BACK_PANE=""
 NO_PING=false
 ATTACH=false
 
+# Detect if we're running inside an existing tmux session (e.g. a pond session).
+# If so, open agents as windows in the current session instead of new detached sessions.
+INSIDE_TMUX=false
+PARENT_SESSION=""
+if [[ -n "${TMUX:-}" ]]; then
+  INSIDE_TMUX=true
+  PARENT_SESSION=$(tmux display-message -p '#S' 2>/dev/null || echo "")
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST_DIR="${HOME}/.shellmates"
 MANIFEST_FILE="${MANIFEST_DIR}/sessions.json"
@@ -113,8 +122,8 @@ if [[ -z "$PING_BACK_PANE" && "$NO_PING" == "false" ]]; then
   fi
 fi
 
-# Check for existing session
-if tmux has-session -t "$SESSION" 2>/dev/null; then
+# Check for existing session (only relevant when creating a new detached session)
+if [[ "$INSIDE_TMUX" == "false" ]] && tmux has-session -t "$SESSION" 2>/dev/null; then
   echo "ERROR: Session '$SESSION' already exists."
   echo "  Use a different name: --session my-task-name"
   echo "  Or check existing: bash $SCRIPT_DIR/status.sh"
@@ -136,21 +145,36 @@ echo "  Task:    $PURPOSE"
 [[ "$NO_PING" == "false" ]] && echo "  Ping:    $PING_BACK_PANE"
 echo ""
 
-# ── Create session ──────────────────────────────────────────────────────────
-
-tmux new-session -d -s "$SESSION" -c "$PROJECT_DIR"
-tmux set-option -w -t "$SESSION:0" pane-border-status top 2>/dev/null || true
-
-# First worker pane (already created with new-session)
-PANE_1=$(tmux list-panes -t "$SESSION:0" -F '#{pane_id}' | sed -n '1p')
-tmux select-pane -t "$PANE_1" -T "worker-1 ($AGENT)"
+# ── Create session (or window if already inside tmux) ────────────────────────
 
 PANE_2=""
-if [[ "$WORKERS" -eq 2 ]]; then
-  tmux split-window -h -t "$SESSION:0" -c "$PROJECT_DIR"
-  tmux select-layout -t "$SESSION:0" even-horizontal
-  PANE_2=$(tmux list-panes -t "$SESSION:0" -F '#{pane_id}' | sed -n '2p')
-  tmux select-pane -t "$PANE_2" -T "worker-2 ($AGENT)"
+if [[ "$INSIDE_TMUX" == "true" ]]; then
+  # Inside a pond session — open agent directly as a new window in this session.
+  # No attach tricks, no separate sessions. User presses Ctrl+B n to reach it.
+  WINDOW_NAME="$AGENT"
+  tmux new-window -t "$PARENT_SESSION" -n "$WINDOW_NAME" -c "$PROJECT_DIR"
+  PANE_1=$(tmux list-panes -t "$PARENT_SESSION:$WINDOW_NAME" -F '#{pane_id}' | sed -n '1p')
+  tmux select-pane -t "$PANE_1" -T "worker-1 ($AGENT)" 2>/dev/null || true
+  if [[ "$WORKERS" -eq 2 ]]; then
+    tmux split-window -h -t "$PARENT_SESSION:$WINDOW_NAME" -c "$PROJECT_DIR"
+    tmux select-layout -t "$PARENT_SESSION:$WINDOW_NAME" even-horizontal
+    PANE_2=$(tmux list-panes -t "$PARENT_SESSION:$WINDOW_NAME" -F '#{pane_id}' | sed -n '2p')
+    tmux select-pane -t "$PANE_2" -T "worker-2 ($AGENT)" 2>/dev/null || true
+  fi
+  # Return focus to the orchestrator window so Claude's output stays visible
+  tmux select-window -t "$PARENT_SESSION:0"
+else
+  # Not inside tmux — create a normal detached session
+  tmux new-session -d -s "$SESSION" -c "$PROJECT_DIR"
+  tmux set-option -w -t "$SESSION:0" pane-border-status top 2>/dev/null || true
+  PANE_1=$(tmux list-panes -t "$SESSION:0" -F '#{pane_id}' | sed -n '1p')
+  tmux select-pane -t "$PANE_1" -T "worker-1 ($AGENT)"
+  if [[ "$WORKERS" -eq 2 ]]; then
+    tmux split-window -h -t "$SESSION:0" -c "$PROJECT_DIR"
+    tmux select-layout -t "$SESSION:0" even-horizontal
+    PANE_2=$(tmux list-panes -t "$SESSION:0" -F '#{pane_id}' | sed -n '2p')
+    tmux select-pane -t "$PANE_2" -T "worker-2 ($AGENT)"
+  fi
 fi
 
 # ── Start agents ─────────────────────────────────────────────────────────────
@@ -284,19 +308,24 @@ bash "$SCRIPT_DIR/dispatch.sh" $DISPATCH_ARGS
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 echo ""
-echo "Team spawned: $SESSION ($WORKERS worker)"
+echo "Agent spawned: $SESSION"
 echo ""
 
-# Open the session view automatically
-bash "$SCRIPT_DIR/view-session.sh" "$SESSION" "$PANE_1"
+if [[ "$INSIDE_TMUX" == "true" ]]; then
+  echo "  ┌─────────────────────────────────────────────┐"
+  echo "  │  Agent is running in this session           │"
+  echo "  │  Ctrl+B n  → switch to agent window        │"
+  echo "  │  Ctrl+B p  → switch back to orchestrator   │"
+  echo "  │  Ctrl+B w  → pick from window list         │"
+  echo "  └─────────────────────────────────────────────┘"
+else
+  bash "$SCRIPT_DIR/view-session.sh" "$SESSION" "$PANE_1"
+fi
 
 if [[ "$NO_PING" == "false" && -n "$PING_BACK_PANE" ]]; then
   echo "Agent will notify pane $PING_BACK_PANE when done."
 fi
 
-echo "Kill when done: bash $SCRIPT_DIR/teardown.sh"
-
-# Optionally attach (overrides view-session behaviour)
-if [[ "$ATTACH" == "true" ]]; then
+if [[ "$ATTACH" == "true" && "$INSIDE_TMUX" == "false" ]]; then
   tmux attach-session -t "$SESSION"
 fi
