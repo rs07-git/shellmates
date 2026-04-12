@@ -14,7 +14,7 @@
   "homepage": "https://github.com/rs07-git/shellmates",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rs07-git/shellmates.git"
+    "url": "git+https://github.com/rs07-git/shellmates.git"
   },
   "license": "MIT",
   "type": "module",
