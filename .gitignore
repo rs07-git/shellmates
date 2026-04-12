@@ -2,3 +2,5 @@
 *.log
 /tmp/
 node_modules/
+Shellmates-Demo/
+examples/

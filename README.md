@@ -1,5 +1,11 @@
 # shellmates
 
+<div align="center">
+  <img src="docs/logo.png" alt="shellmates" width="720" />
+</div>
+
+<br />
+
 Your terminal. Multiple AI agents. All talking to each other.
 
 ```
