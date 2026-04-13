@@ -164,41 +164,92 @@ if [[ "$INSIDE_TMUX" == "true" ]]; then
   PANE_COUNT=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | wc -l | tr -d ' ')
 
   if [[ $PANE_COUNT -eq 1 ]]; then
-    # ── First executor: split right ──────────────────────────────────────────
+    # ── First executor: split right (orch left, agent right) ─────────────────
     ORCH_PANE=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | head -1)
     tmux split-window -h -t "$ORCH_PANE" -c "$PROJECT_DIR" -p 50
     PANE_1=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | tail -1)
-    # Enable pane borders so titles are visible
     tmux set-option -w -t "$PARENT_SESSION:0" pane-border-status top 2>/dev/null || true
     tmux select-pane -t "$ORCH_PANE" -T "orchestrator" 2>/dev/null || true
 
   elif [[ $PANE_COUNT -eq 2 ]]; then
-    # ── Second executor: split bottom-right ──────────────────────────────────
+    # ── Second executor: split right pane vertically (top-right / bottom-right)
     RIGHT_PANE=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | tail -1)
     tmux split-window -v -t "$RIGHT_PANE" -c "$PROJECT_DIR"
     PANE_1=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | tail -1)
 
   else
-    # ── 3rd+ executor: overflow to a new window ──────────────────────────────
-    WINDOW_NAME="agents"
-    WIN_NUM=2
-    while tmux list-windows -t "$PARENT_SESSION" -F '#{window_name}' 2>/dev/null | grep -qx "$WINDOW_NAME"; do
-      WINDOW_NAME="agents-$WIN_NUM"
-      WIN_NUM=$((WIN_NUM + 1))
-    done
-    tmux new-window -t "$PARENT_SESSION" -n "$WINDOW_NAME" -c "$PROJECT_DIR"
-    PANE_1=$(tmux list-panes -t "$PARENT_SESSION:$WINDOW_NAME" -F '#{pane_id}' | head -1)
+    # ── Main window full — place agent in an overflow window.
+    #
+    # Priority order (scans ALL agents* windows, not just the last one):
+    #   1. Reuse a dead pane (process exited) via respawn-pane -k — no new window needed
+    #   2. Split any agents* window that currently has only 1 pane
+    #   3. Create a new agents-N window only when every existing one is full + alive
+    #
+    # This means a finished agent's slot is immediately available for the next spawn,
+    # and gaps are filled before new windows are ever opened.
     IN_NEW_WINDOW=true
-    echo "  Right side full — new window '$WINDOW_NAME' (Ctrl+B n to reach)"
+    PANE_1=""
+
+    # Step 1: scan ALL agents* windows for a dead pane and respawn it
+    while IFS= read -r WIN_NAME; do
+      while IFS= read -r PANE_INFO; do
+        PANE_ID="${PANE_INFO%%|*}"
+        PANE_DEAD="${PANE_INFO##*|}"
+        if [[ "$PANE_DEAD" == "1" ]]; then
+          tmux respawn-pane -k -t "$PANE_ID" 2>/dev/null || true
+          PANE_1="$PANE_ID"
+          echo "  Reusing finished pane $PANE_ID in window '$WIN_NAME'"
+          break 2
+        fi
+      done < <(tmux list-panes -t "$PARENT_SESSION:$WIN_NAME" \
+        -F '#{pane_id}|#{pane_dead}' 2>/dev/null)
+    done < <(tmux list-windows -t "$PARENT_SESSION" \
+      -F '#{window_name}' 2>/dev/null | grep '^agents')
+
+    # Step 2: find any agents* window with < 2 panes and split it vertically
+    if [[ -z "$PANE_1" ]]; then
+      while IFS= read -r WIN_NAME; do
+        OVF_PANE_COUNT=$(tmux list-panes -t "$PARENT_SESSION:$WIN_NAME" \
+          -F '#{pane_id}' 2>/dev/null | wc -l | tr -d ' ')
+        if [[ $OVF_PANE_COUNT -lt 2 ]]; then
+          TOP_PANE=$(tmux list-panes -t "$PARENT_SESSION:$WIN_NAME" \
+            -F '#{pane_id}' | head -1)
+          tmux split-window -v -t "$TOP_PANE" -c "$PROJECT_DIR"
+          PANE_1=$(tmux list-panes -t "$PARENT_SESSION:$WIN_NAME" \
+            -F '#{pane_id}' | tail -1)
+          break
+        fi
+      done < <(tmux list-windows -t "$PARENT_SESSION" \
+        -F '#{window_name}' 2>/dev/null | grep '^agents')
+    fi
+
+    # Step 3: every existing window is full and alive — open a new one
+    if [[ -z "$PANE_1" ]]; then
+      if ! tmux list-windows -t "$PARENT_SESSION" -F '#{window_name}' \
+          2>/dev/null | grep -qx 'agents'; then
+        NEW_WIN="agents"
+      else
+        WIN_NUM=2
+        NEW_WIN="agents-$WIN_NUM"
+        while tmux list-windows -t "$PARENT_SESSION" \
+            -F '#{window_name}' 2>/dev/null | grep -qx "$NEW_WIN"; do
+          WIN_NUM=$((WIN_NUM + 1))
+          NEW_WIN="agents-$WIN_NUM"
+        done
+      fi
+      tmux new-window -t "$PARENT_SESSION" -n "$NEW_WIN" -c "$PROJECT_DIR"
+      tmux set-option -w -t "$PARENT_SESSION:$NEW_WIN" pane-border-status top 2>/dev/null || true
+      PANE_1=$(tmux list-panes -t "$PARENT_SESSION:$NEW_WIN" \
+        -F '#{pane_id}' | head -1)
+      echo "  Opened new overflow window: '$NEW_WIN'"
+    fi
+
+    tmux select-window -t "$PARENT_SESSION:0"
   fi
 
-  # Label the agent pane
+  # Label the agent pane and return focus to orchestrator pane
   tmux select-pane -t "$PANE_1" -T "$AGENT" 2>/dev/null || true
-
-  # Return focus to orchestrator
-  if [[ "$IN_NEW_WINDOW" == "true" ]]; then
-    tmux select-window -t "$PARENT_SESSION:0"
-  else
+  if [[ "$IN_NEW_WINDOW" == "false" ]]; then
     ORCH_PANE=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | head -1)
     tmux select-pane -t "$ORCH_PANE"
   fi
