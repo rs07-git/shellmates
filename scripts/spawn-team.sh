@@ -38,6 +38,7 @@ PURPOSE=""
 PING_BACK_PANE=""
 NO_PING=false
 ATTACH=false
+REUSE_PANE=""
 
 # Detect if we're running inside an existing tmux session (e.g. a pond session).
 # If so, open agents as windows in the current session instead of new detached sessions.
@@ -65,6 +66,7 @@ while [[ $# -gt 0 ]]; do
     --no-ping)    NO_PING=true; shift ;;
     --no-view)    ATTACH=false; shift ;;
     --attach)     ATTACH=true; shift ;;
+    --reuse-pane) REUSE_PANE="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,25p' "$0" | sed 's/^# //' | sed 's/^#//'
       exit 0 ;;
@@ -145,6 +147,26 @@ echo "  Task:    $PURPOSE"
 [[ "$NO_PING" == "false" ]] && echo "  Ping:    $PING_BACK_PANE"
 echo ""
 
+# ── Window border helper ──────────────────────────────────────────────────────
+#
+# Applies consistent visual borders to every shellmates window:
+#   • Dim gray border lines between panes (inactive)
+#   • Bright blue border for the focused pane
+#   • Heavy border lines (tmux 3.2+) for clearer separation
+#   • Color-coded title strip at the top of each pane
+#       orchestrator → green   executors → orange
+
+setup_window_borders() {
+  local target="$1"
+  tmux set-option -w -t "$target" pane-border-style        "fg=colour238"     2>/dev/null || true
+  tmux set-option -w -t "$target" pane-active-border-style "fg=colour75,bold" 2>/dev/null || true
+  tmux set-option -w -t "$target" pane-border-status       top                2>/dev/null || true
+  tmux set-option -w -t "$target" pane-border-lines        heavy              2>/dev/null || true
+  tmux set-option -w -t "$target" pane-border-format \
+    "#{?#{==:#{pane_title},orchestrator},#[fg=colour83 bold],#[fg=colour214 bold]} #{pane_title} #[default]" \
+    2>/dev/null || true
+}
+
 # ── Create pane / session ─────────────────────────────────────────────────────
 #
 # Pond layout (inside tmux):
@@ -160,7 +182,50 @@ echo ""
 PANE_2=""
 IN_NEW_WINDOW=false
 
-if [[ "$INSIDE_TMUX" == "true" ]]; then
+if [[ -n "$REUSE_PANE" ]]; then
+  # ── Reuse mode: clear context in a warm existing pane ────────────────────────
+  # Skips agent startup entirely — /clear resets conversation in ~1s vs ~5s cold start.
+  PANE_1="$REUSE_PANE"
+
+  # Resolve session name for summary / manifest (use pane's existing session)
+  if [[ -z "$SESSION" ]]; then
+    SESSION=$(tmux display-message -p -t "$PANE_1" '#S' 2>/dev/null || echo "reused-$$")
+  fi
+
+  PANE_DEAD_CHECK=$(tmux display-message -p -t "$PANE_1" '#{pane_dead}' 2>/dev/null || echo "0")
+
+  if [[ "$PANE_DEAD_CHECK" == "1" ]]; then
+    # Agent process died — respawn shell and start fresh
+    echo "Pane $PANE_1 process is dead — respawning..."
+    tmux respawn-pane -k -t "$PANE_1" 2>/dev/null || true
+    sleep 1
+    _CFG="${HOME}/.shellmates/config.json"
+    _PERM=$(python3 -c "import json,os; d=json.load(open('$_CFG')) if os.path.exists('$_CFG') else {}; print(d.get('permission_mode','default'))" 2>/dev/null || echo "default")
+    if [[ "$_PERM" == "bypass" ]]; then
+      case "$AGENT" in
+        gemini) _ACMD="gemini --yolo" ;;
+        codex)  _ACMD="codex --full-auto" ;;
+        *)      _ACMD="$AGENT" ;;
+      esac
+    else
+      _ACMD="$AGENT"
+    fi
+    tmux send-keys -t "$PANE_1" "$_ACMD" Enter
+    sleep 3
+  else
+    echo "Reusing warm pane $PANE_1 — clearing context with /clear..."
+    tmux send-keys -t "$PANE_1" "/clear" Enter
+    _WAIT=0
+    while [[ $_WAIT -lt 10 ]]; do
+      sleep 1; _WAIT=$((_WAIT + 1))
+      tmux capture-pane -t "$PANE_1" -p 2>/dev/null | grep -q "Type your message" && break
+    done
+    echo "Pane ready."
+  fi
+
+  tmux select-pane -t "$PANE_1" -T "$AGENT" 2>/dev/null || true
+
+elif [[ "$INSIDE_TMUX" == "true" ]]; then
   PANE_COUNT=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | wc -l | tr -d ' ')
 
   if [[ $PANE_COUNT -eq 1 ]]; then
@@ -168,7 +233,7 @@ if [[ "$INSIDE_TMUX" == "true" ]]; then
     ORCH_PANE=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | head -1)
     tmux split-window -h -t "$ORCH_PANE" -c "$PROJECT_DIR" -p 50
     PANE_1=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | tail -1)
-    tmux set-option -w -t "$PARENT_SESSION:0" pane-border-status top 2>/dev/null || true
+    setup_window_borders "$PARENT_SESSION:0"
     tmux select-pane -t "$ORCH_PANE" -T "orchestrator" 2>/dev/null || true
 
   elif [[ $PANE_COUNT -eq 2 ]]; then
@@ -238,7 +303,7 @@ if [[ "$INSIDE_TMUX" == "true" ]]; then
         done
       fi
       tmux new-window -t "$PARENT_SESSION" -n "$NEW_WIN" -c "$PROJECT_DIR"
-      tmux set-option -w -t "$PARENT_SESSION:$NEW_WIN" pane-border-status top 2>/dev/null || true
+      setup_window_borders "$PARENT_SESSION:$NEW_WIN"
       PANE_1=$(tmux list-panes -t "$PARENT_SESSION:$NEW_WIN" \
         -F '#{pane_id}' | head -1)
       echo "  Opened new overflow window: '$NEW_WIN'"
@@ -257,7 +322,7 @@ if [[ "$INSIDE_TMUX" == "true" ]]; then
 else
   # ── Outside tmux: create a normal detached session ────────────────────────
   tmux new-session -d -s "$SESSION" -c "$PROJECT_DIR"
-  tmux set-option -w -t "$SESSION:0" pane-border-status top 2>/dev/null || true
+  setup_window_borders "$SESSION:0"
   PANE_1=$(tmux list-panes -t "$SESSION:0" -F '#{pane_id}' | sed -n '1p')
   tmux select-pane -t "$PANE_1" -T "worker-1 ($AGENT)"
   if [[ "$WORKERS" -eq 2 ]]; then
@@ -328,10 +393,12 @@ start_agent() {
   fi
 }
 
-start_agent "$PANE_1" "worker-1"
-
-if [[ "$WORKERS" -eq 2 ]]; then
-  start_agent "$PANE_2" "worker-2"
+# Skip start_agent when reusing — the agent process is already running
+if [[ -z "$REUSE_PANE" ]]; then
+  start_agent "$PANE_1" "worker-1"
+  if [[ "$WORKERS" -eq 2 ]]; then
+    start_agent "$PANE_2" "worker-2"
+  fi
 fi
 
 # ── Register in manifest ──────────────────────────────────────────────────────
@@ -403,7 +470,13 @@ echo "Agent spawned: $SESSION"
 echo ""
 
 if [[ "$INSIDE_TMUX" == "true" ]]; then
-  if [[ "$IN_NEW_WINDOW" == "true" ]]; then
+  if [[ -n "$REUSE_PANE" ]]; then
+    echo "  ┌─────────────────────────────────────────────┐"
+    echo "  │  Task dispatched to existing pane           │"
+    echo "  │  Context cleared — reusing warm terminal    │"
+    echo "  │  Pane: $REUSE_PANE                          │"
+    echo "  └─────────────────────────────────────────────┘"
+  elif [[ "$IN_NEW_WINDOW" == "true" ]]; then
     echo "  ┌─────────────────────────────────────────────┐"
     echo "  │  Agent opened in a new window               │"
     echo "  │  Ctrl+B n  → jump to agent window          │"

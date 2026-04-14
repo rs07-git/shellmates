@@ -107,10 +107,11 @@ AWAITING_INSTRUCTIONS
 
 ### Notifying Claude directly (when asked)
 
-If Claude explicitly asks you to ping it, run this bash command — it types the message into Claude's terminal:
+If Claude explicitly asks you to ping it, run these two commands — the `-l` flag sends the message literally so brackets and colons in your output don't get misinterpreted as terminal escape sequences:
 
 ```bash
-tmux send-keys -t orchestra:0.1 "AGENT_PING: [task] complete. Files changed: [list]. Issues: [any deviations or problems]. Tests: [pass/fail + counts]. — AWAITING_INSTRUCTIONS" Enter
+tmux send-keys -l -t orchestra:0.1 "AGENT_PING: [task] complete. Files changed: [list]. Issues: [any deviations or problems]. Tests: [pass/fail + counts]. — AWAITING_INSTRUCTIONS"
+tmux send-keys -t orchestra:0.1 "" Enter
 ```
 
 ### Rules — read these carefully

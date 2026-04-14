@@ -311,7 +311,8 @@ if [[ "$NO_PING" == "false" ]]; then
   WATCH_ARGS="$JOB_ID"
   [[ -n "$PING_BACK_PANE" ]] && WATCH_ARGS="$WATCH_ARGS $PING_BACK_PANE"
 
-  bash "$SCRIPT_DIR/watch-inbox.sh" $WATCH_ARGS &
+  # Pass the agent pane as 3rd arg so the watcher can include reuse-pane:ID in the ping
+  bash "$SCRIPT_DIR/watch-inbox.sh" $WATCH_ARGS "$PANE" &
   WATCHER_PID=$!
   echo "Background watcher started (PID: $WATCHER_PID)"
 fi

@@ -3,17 +3,39 @@
 This project uses shellmates for multi-agent orchestration via tmux.
 Full operating instructions: `ORCHESTRATOR.md` — read it before any orchestration session.
 
+### At the start of EVERY response — drain pending pings first
+
+Before doing anything else, run this one-liner. Pings are sometimes queued here when they
+arrived while you had a permission dialog open:
+
+```bash
+for f in ~/.shellmates/pending-pings/*.txt; do [ -f "$f" ] || continue; cat "$f"; rm "$f"; done
+```
+
+If any AGENT_PING lines appear, treat them exactly as live pings — they just arrived late.
+
 ### Dispatching tasks
 
 Always use shellmates to dispatch — never raw `tmux send-keys` directly:
 
 ```bash
-# One-liner (spawns session + dispatches):
-shellmates spawn --task-file /tmp/task.txt --project /path/to/project --watch
+# First task to an agent (spawns a new pane):
+shellmates spawn --task "Run Phase 3 Plan 1" --agent gemini
 
-# Or via script directly:
-bash scripts/spawn-team.sh --task-file /tmp/task.txt --project /path/to/project
+# Follow-up task to the SAME agent pane (faster — /clear resets context, no cold start):
+shellmates spawn --task "Run Phase 3 Plan 2" --agent gemini --reuse-pane %46
 ```
+
+The `reuse-pane` ID comes from the AGENT_PING:
+```
+AGENT_PING: job:job-123 reuse-pane:%46 status:complete ...
+```
+
+**Use `--reuse-pane` when:** the previous task is fully done (AGENT_PING received) and you
+don't need that pane's conversation history (GSD phases write everything to files — you
+almost never need the history).
+
+**Spawn fresh when:** you need two plans running in parallel at the same time.
 
 ### CRITICAL — Do not poll
 
@@ -26,11 +48,11 @@ After dispatching, **stop working and end your turn**.
 The agent will notify you when it finishes. The notification looks like:
 
 ```
-AGENT_PING: job-XXXXX complete. STATUS: complete. RESULT: ...
+AGENT_PING: job:job-XXXXX reuse-pane:%46 status:complete RESULT: Plan 2 done ... — AWAITING_INSTRUCTIONS
 ```
 
-This appears directly in your terminal when the background watcher detects the result.
-Read it, then decide next steps.
+Read it, then dispatch the next plan (using `--reuse-pane %46` if sequential, or a fresh
+spawn if parallel).
 
 ### If you need to check manually (once only)
 

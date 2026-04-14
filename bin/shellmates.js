@@ -94,6 +94,7 @@ program
   .option('-p, --project <path>', 'Project directory (default: cwd)')
   .option('-w, --watch', 'Wait and print result when agent finishes')
   .option('--no-ping', 'Skip background inbox watcher')
+  .option('-r, --reuse-pane <paneId>', 'Reuse an existing warm agent pane (send /clear, skip startup)')
   .action(async (opts) => {
     // No task provided → open the orchestrator intake (pond mode)
     if (!opts.task && !opts.taskFile) {
@@ -110,6 +111,7 @@ program
       project: opts.project,
       watch: opts.watch,
       noPing: !opts.ping,
+      reusePane: opts.reusePane,
     })
   })
 

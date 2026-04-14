@@ -23,6 +23,7 @@ set -euo pipefail
 
 JOB_ID="${1:-}"
 NOTIFY_PANE="${2:-${TMUX_PANE:-}}"
+AGENT_PANE="${3:-}"   # The pane that ran the agent — included in ping so orchestrator can reuse it
 INBOX_DIR="${HOME}/.shellmates/inbox"
 RESULT_FILE="${INBOX_DIR}/${JOB_ID}.txt"
 TIMEOUT="${SHELLMATES_TIMEOUT:-300}"  # 5 minutes default
@@ -55,17 +56,47 @@ fi
 RESULT=$(cat "$RESULT_FILE")
 SUMMARY=$(grep "^RESULT:" "$RESULT_FILE" -A 5 | tail -5 | tr '\n' ' ' | cut -c1-120)
 
-MSG="AGENT_PING: job:${JOB_ID} status:complete ${SUMMARY} — AWAITING_INSTRUCTIONS"
+# Build message — include agent pane ID so orchestrator can reuse it for the next plan
+REUSE_HINT=""
+[[ -n "$AGENT_PANE" ]] && REUSE_HINT=" reuse-pane:${AGENT_PANE}"
+MSG="AGENT_PING: job:${JOB_ID}${REUSE_HINT} status:complete ${SUMMARY} — AWAITING_INSTRUCTIONS"
 
-# Notify the orchestrator
+# Write to pending-pings immediately — persists if live delivery fails
+# (e.g. orchestrator has a dialog open and can't receive keystrokes right now)
+PING_DIR="${HOME}/.shellmates/pending-pings"
+mkdir -p "$PING_DIR"
+PING_FILE="${PING_DIR}/${JOB_ID}.txt"
+echo "$MSG" > "$PING_FILE"
+
+# Notify the orchestrator — wait for any open dialog to clear before sending
 if [[ -n "$NOTIFY_PANE" ]]; then
-  # Active notification: type directly into orchestrator's pane
-  tmux send-keys -t "$NOTIFY_PANE" "$MSG" Enter 2>/dev/null && {
-    echo "Notified pane $NOTIFY_PANE"
-    exit 2  # asyncRewake signal
-  }
+  MAX_WAIT=120   # Wait up to 2 minutes for orchestrator to become free
+  ELAPSED_WAIT=0
+
+  while [[ $ELAPSED_WAIT -lt $MAX_WAIT ]]; do
+    pane_content=$(tmux capture-pane -t "$NOTIFY_PANE" -p 2>/dev/null | tail -8)
+
+    # Detect common Claude Code dialog / permission prompt patterns
+    if echo "$pane_content" | grep -qiE "Allow tool|Approve|trust this|\(y/n\)|Yes/No|Deny|confirm|allow this|allow read|allow write|allow bash"; then
+      echo "Orchestrator dialog open (${ELAPSED_WAIT}s) — waiting for it to close..."
+      sleep 3
+      ELAPSED_WAIT=$((ELAPSED_WAIT + 3))
+      continue
+    fi
+
+    # Pane looks free — send using -l (literal) to avoid tmux interpreting
+    # brackets or colons in the message as terminal escape sequences
+    tmux send-keys -l -t "$NOTIFY_PANE" "$MSG" 2>/dev/null
+    tmux send-keys -t "$NOTIFY_PANE" "" Enter 2>/dev/null
+    echo "Ping delivered to pane $NOTIFY_PANE"
+    rm -f "$PING_FILE"
+    exit 2
+  done
+
+  echo "Orchestrator dialog persisted ${MAX_WAIT}s — ping queued at $PING_FILE"
+  echo "(Orchestrator will drain it on next turn via: for f in ~/.shellmates/pending-pings/*.txt; do ...)"
 fi
 
-# Fallback: print to stdout (orchestrator polling or asyncRewake hook reads this)
+# Fallback: print to stdout (asyncRewake hook reads this)
 echo "$MSG"
 exit 2
