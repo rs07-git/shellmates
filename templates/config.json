@@ -1,9 +1,11 @@
 {
   "permission_mode": "default",
+  "orchestrator_permission_mode": "default",
   "default_agent": "gemini",
   "orchestrator": "claude",
   "_docs": {
-    "permission_mode": "default | bypass — bypass starts agents in auto-approve mode (no confirmation prompts). gemini uses --yolo, codex uses --full-auto.",
+    "permission_mode": "default | bypass — bypass starts worker agents in auto-approve mode (no confirmation prompts). gemini uses --yolo, codex uses --full-auto.",
+    "orchestrator_permission_mode": "default | bypass — bypass starts the orchestrator itself in auto-approve mode. claude uses --dangerously-skip-permissions, gemini uses --yolo, codex uses --full-auto.",
     "default_agent": "gemini | codex | ask — which CLI to use for worker tasks. 'ask' prompts you each time.",
     "orchestrator": "claude | gemini | codex — which CLI acts as orchestrator. Determines which pane reads ORCHESTRATOR.md."
   }
