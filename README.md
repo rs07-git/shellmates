@@ -1,7 +1,7 @@
 # shellmates
 
 <div align="center">
-  <img src="docs/screenshot.png" alt="shellmates CLI" width="720" />
+  <img src="docs/screenshot-1.png" alt="shellmates CLI" width="720" />
 </div>
 
 <br />
@@ -19,6 +19,12 @@ npm install -g shellmates
 Claude plans. Gemini builds. Codex verifies. They coordinate through your terminal using tmux — no APIs between them, no glue code, just agents passing tasks like coworkers at adjacent desks.
 
 ---
+
+<div align="center">
+  <img src="docs/screenshot-2.png" alt="shellmates agents in action" width="720" />
+</div>
+
+<br />
 
 <div align="center">
   <img src="docs/demo.gif" alt="shellmates demo" width="720" />
