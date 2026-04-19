@@ -26,9 +26,11 @@ NOTIFY_PANE="${2:-${TMUX_PANE:-}}"
 AGENT_PANE="${3:-}"   # The pane that ran the agent — included in ping so orchestrator can reuse it
 INBOX_DIR="${HOME}/.shellmates/inbox"
 RESULT_FILE="${INBOX_DIR}/${JOB_ID}.txt"
-TIMEOUT="${SHELLMATES_TIMEOUT:-300}"  # 5 minutes default
+WARN_AFTER="${SHELLMATES_WARN_AFTER:-300}"   # warn orchestrator at 5 min
+HARD_TIMEOUT="${SHELLMATES_TIMEOUT:-1800}"  # give up at 30 min
 INTERVAL=1
 ELAPSED=0
+WARNED=false
 
 if [[ -z "$JOB_ID" ]]; then
   echo "Usage: $0 JOB_ID [NOTIFY_PANE]"
@@ -37,18 +39,31 @@ fi
 
 mkdir -p "$INBOX_DIR"
 
-# Wait for the result file
-while [[ ! -f "$RESULT_FILE" && $ELAPSED -lt $TIMEOUT ]]; do
+# Wait for the result file — send a warning at WARN_AFTER seconds but keep watching.
+# Only give up at HARD_TIMEOUT (default 30 min).
+while [[ ! -f "$RESULT_FILE" && $ELAPSED -lt $HARD_TIMEOUT ]]; do
   sleep $INTERVAL
   ELAPSED=$((ELAPSED + INTERVAL))
+
+  # At the warning threshold, ping the orchestrator once — agent is just taking longer
+  if [[ "$WARNED" == "false" && $ELAPSED -ge $WARN_AFTER ]]; then
+    WARNED=true
+    WARN_MSG="SHELLMATES_WARN: job:${JOB_ID} still running after ${WARN_AFTER}s — agent active, no action needed"
+    if [[ -n "$NOTIFY_PANE" ]]; then
+      tmux send-keys -l -t "$NOTIFY_PANE" "$WARN_MSG" 2>/dev/null || true
+      tmux send-keys -t "$NOTIFY_PANE" "" Enter 2>/dev/null || true
+    fi
+    echo "$WARN_MSG"
+  fi
 done
 
 if [[ ! -f "$RESULT_FILE" ]]; then
-  MSG="SHELLMATES_TIMEOUT: job $JOB_ID timed out after ${TIMEOUT}s"
+  TIMEOUT_MSG="SHELLMATES_TIMEOUT: job:${JOB_ID} gave up after ${HARD_TIMEOUT}s — no result file written"
   if [[ -n "$NOTIFY_PANE" ]]; then
-    tmux send-keys -t "$NOTIFY_PANE" "$MSG — AWAITING_INSTRUCTIONS" Enter 2>/dev/null || true
+    tmux send-keys -l -t "$NOTIFY_PANE" "$TIMEOUT_MSG" 2>/dev/null || true
+    tmux send-keys -t "$NOTIFY_PANE" "" Enter 2>/dev/null || true
   fi
-  echo "$MSG"
+  echo "$TIMEOUT_MSG"
   exit 1
 fi
 

@@ -17,7 +17,7 @@
 #   --task        Inline task description
 #   --task-file   Path to detailed task file (preferred for multi-step tasks)
 #   --agent       Agent type: gemini (default) or codex
-#   --workers     Number of parallel agents (1-2, default: 1)
+#   --workers     Number of parallel agents (1-6, default: 1)
 #   --project     Project directory (default: current working directory)
 #   --session     Session name (default: auto-generated from timestamp)
 #   --purpose     Short label shown in status.sh (default: first line of task)
@@ -86,8 +86,8 @@ if [[ -n "$TASK_FILE" && ! -f "$TASK_FILE" ]]; then
   exit 1
 fi
 
-if [[ "$WORKERS" -lt 1 || "$WORKERS" -gt 2 ]]; then
-  echo "ERROR: --workers must be 1 or 2"
+if [[ "$WORKERS" -lt 1 || "$WORKERS" -gt 6 ]]; then
+  echo "ERROR: --workers must be between 1 and 6"
   exit 1
 fi
 
@@ -158,12 +158,15 @@ echo ""
 
 setup_window_borders() {
   local target="$1"
-  tmux set-option -w -t "$target" pane-border-style        "fg=colour238"     2>/dev/null || true
-  tmux set-option -w -t "$target" pane-active-border-style "fg=colour75,bold" 2>/dev/null || true
-  tmux set-option -w -t "$target" pane-border-status       top                2>/dev/null || true
-  tmux set-option -w -t "$target" pane-border-lines        heavy              2>/dev/null || true
+  # Double lines give a more visually distinct separation than heavy single lines.
+  # Bright yellow active border (colour226) is impossible to miss.
+  # Inactive borders use colour244 (light grey) — visible but not distracting.
+  tmux set-option -w -t "$target" pane-border-style        "fg=colour244"      2>/dev/null || true
+  tmux set-option -w -t "$target" pane-active-border-style "fg=colour226,bold" 2>/dev/null || true
+  tmux set-option -w -t "$target" pane-border-status       top                 2>/dev/null || true
+  tmux set-option -w -t "$target" pane-border-lines        double              2>/dev/null || true
   tmux set-option -w -t "$target" pane-border-format \
-    "#{?#{==:#{pane_title},orchestrator},#[fg=colour83 bold],#[fg=colour214 bold]} #{pane_title} #[default]" \
+    "#{?#{==:#{pane_title},orchestrator},#[fg=colour83 bold]  ◆ #{pane_title}  ,#[fg=colour214 bold]  ◇ #{pane_title}  }#[default]" \
     2>/dev/null || true
 }
 
@@ -242,6 +245,12 @@ elif [[ "$INSIDE_TMUX" == "true" ]]; then
     tmux split-window -v -t "$RIGHT_PANE" -c "$PROJECT_DIR"
     PANE_1=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | tail -1)
 
+  elif [[ $PANE_COUNT -eq 3 ]]; then
+    # ── Third executor: split bottom-right pane again (right column now has 3 rows)
+    BOTTOM_RIGHT=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | tail -1)
+    tmux split-window -v -t "$BOTTOM_RIGHT" -c "$PROJECT_DIR"
+    PANE_1=$(tmux list-panes -t "$PARENT_SESSION:0" -F '#{pane_id}' | tail -1)
+
   else
     # ── Main window full — place agent in an overflow window.
     #
@@ -271,17 +280,20 @@ elif [[ "$INSIDE_TMUX" == "true" ]]; then
     done < <(tmux list-windows -t "$PARENT_SESSION" \
       -F '#{window_name}' 2>/dev/null | grep '^agents')
 
-    # Step 2: find any agents* window with < 2 panes and split it vertically
+    # Step 2: find any agents* window with < 6 panes and add to it
+    # Uses tiled layout so panes auto-arrange into a readable grid.
     if [[ -z "$PANE_1" ]]; then
       while IFS= read -r WIN_NAME; do
         OVF_PANE_COUNT=$(tmux list-panes -t "$PARENT_SESSION:$WIN_NAME" \
           -F '#{pane_id}' 2>/dev/null | wc -l | tr -d ' ')
-        if [[ $OVF_PANE_COUNT -lt 2 ]]; then
-          TOP_PANE=$(tmux list-panes -t "$PARENT_SESSION:$WIN_NAME" \
+        if [[ $OVF_PANE_COUNT -lt 6 ]]; then
+          ANY_PANE=$(tmux list-panes -t "$PARENT_SESSION:$WIN_NAME" \
             -F '#{pane_id}' | head -1)
-          tmux split-window -v -t "$TOP_PANE" -c "$PROJECT_DIR"
+          tmux split-window -t "$ANY_PANE" -c "$PROJECT_DIR"
           PANE_1=$(tmux list-panes -t "$PARENT_SESSION:$WIN_NAME" \
             -F '#{pane_id}' | tail -1)
+          # Re-tile to keep panes evenly arranged
+          tmux select-layout -t "$PARENT_SESSION:$WIN_NAME" tiled 2>/dev/null || true
           break
         fi
       done < <(tmux list-windows -t "$PARENT_SESSION" \
@@ -306,6 +318,7 @@ elif [[ "$INSIDE_TMUX" == "true" ]]; then
       setup_window_borders "$PARENT_SESSION:$NEW_WIN"
       PANE_1=$(tmux list-panes -t "$PARENT_SESSION:$NEW_WIN" \
         -F '#{pane_id}' | head -1)
+      tmux select-layout -t "$PARENT_SESSION:$NEW_WIN" tiled 2>/dev/null || true
       echo "  Opened new overflow window: '$NEW_WIN'"
     fi
 
