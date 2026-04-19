@@ -140,7 +140,31 @@ After dispatching, **stop working and end your turn**.
 - Do NOT sleep and re-check
 - Do NOT monitor panes second by second
 
-The agent will notify you when it finishes via AGENT_PING.
+The agent will notify you when it finishes via AGENT_PING:
+
+```
+AGENT_PING: job:job-XXXXX reuse-pane:%46 status:complete idle-panes:%48 busy-panes:%50 free-slots:2 RESULT: ... — AWAITING_INSTRUCTIONS
+```
+
+### Pane hygiene — read the inventory fields
+
+Every AGENT_PING includes a live snapshot of your session's pane state:
+
+| Field | Meaning |
+|-------|---------|
+| `idle-panes:%15,%18` | Agent CLIs sitting at a prompt — ready for reuse or safe to kill |
+| `busy-panes:%16` | Agent CLIs still running a task — do not kill or send to these |
+| `free-slots:3` | How many new panes you can still open (cap is 6) |
+
+**What to do with this information:**
+
+- **Reuse idle panes** for the next sequential task (`--reuse-pane %ID`) instead of spawning fresh
+- **Spawn in parallel** when `free-slots > 0` and the next tasks are independent — don't wait for one agent to finish before starting another
+- **Kill idle panes you're done with** — once a pane's agent has finished its last task and you have no more work for it, kill it:
+  ```bash
+  tmux kill-pane -t %48
+  ```
+- **Never let idle panes accumulate.** Each costs tmux resources and makes the session harder to read.
 
 ### If you need to check manually (once only)
 

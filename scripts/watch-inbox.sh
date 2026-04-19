@@ -26,11 +26,9 @@ NOTIFY_PANE="${2:-${TMUX_PANE:-}}"
 AGENT_PANE="${3:-}"   # The pane that ran the agent — included in ping so orchestrator can reuse it
 INBOX_DIR="${HOME}/.shellmates/inbox"
 RESULT_FILE="${INBOX_DIR}/${JOB_ID}.txt"
-WARN_AFTER="${SHELLMATES_WARN_AFTER:-300}"   # warn orchestrator at 5 min
 HARD_TIMEOUT="${SHELLMATES_TIMEOUT:-1800}"  # give up at 30 min
 INTERVAL=1
 ELAPSED=0
-WARNED=false
 
 if [[ -z "$JOB_ID" ]]; then
   echo "Usage: $0 JOB_ID [NOTIFY_PANE]"
@@ -39,22 +37,12 @@ fi
 
 mkdir -p "$INBOX_DIR"
 
-# Wait for the result file — send a warning at WARN_AFTER seconds but keep watching.
+# Wait silently until the result file appears. No intermediate notifications —
+# agents running long tasks are not a problem, just a long task.
 # Only give up at HARD_TIMEOUT (default 30 min).
 while [[ ! -f "$RESULT_FILE" && $ELAPSED -lt $HARD_TIMEOUT ]]; do
   sleep $INTERVAL
   ELAPSED=$((ELAPSED + INTERVAL))
-
-  # At the warning threshold, ping the orchestrator once — agent is just taking longer
-  if [[ "$WARNED" == "false" && $ELAPSED -ge $WARN_AFTER ]]; then
-    WARNED=true
-    WARN_MSG="SHELLMATES_WARN: job:${JOB_ID} still running after ${WARN_AFTER}s — agent active, no action needed"
-    if [[ -n "$NOTIFY_PANE" ]]; then
-      tmux send-keys -l -t "$NOTIFY_PANE" "$WARN_MSG" 2>/dev/null || true
-      tmux send-keys -t "$NOTIFY_PANE" "" Enter 2>/dev/null || true
-    fi
-    echo "$WARN_MSG"
-  fi
 done
 
 if [[ ! -f "$RESULT_FILE" ]]; then
@@ -71,10 +59,64 @@ fi
 RESULT=$(cat "$RESULT_FILE")
 SUMMARY=$(grep "^RESULT:" "$RESULT_FILE" -A 5 | tail -5 | tr '\n' ' ' | cut -c1-120)
 
-# Build message — include agent pane ID so orchestrator can reuse it for the next plan
+# compute_pane_inventory — snapshot of pane state across the session at the moment
+# the orchestrator is about to make its next decision.
+#
+# Outputs a string like: " idle-panes:%15,%18 busy-panes:%16 free-slots:3"
+# that gets appended to the AGENT_PING so the orchestrator knows exactly
+# what capacity is available without polling.
+#
+# Idle detection: looks for the agent CLI's input prompt in the last 3 lines.
+# Matches Claude Code ("Type your message"), Gemini ("❯ " or "Thinking..."),
+# and Codex ("> " at end of line).
+compute_pane_inventory() {
+  local notify_pane="$1"
+
+  # Resolve session name from orchestrator pane
+  local session
+  session=$(tmux display-message -p -t "$notify_pane" '#S' 2>/dev/null || echo "")
+  [[ -z "$session" ]] && echo " free-slots:unknown" && return
+
+  local idle_list="" busy_list="" agent_count=0
+
+  while IFS='|' read -r pid dead; do
+    # Skip the orchestrator pane itself
+    [[ "$pid" == "$notify_pane" ]] && continue
+    # Skip dead panes
+    [[ "$dead" == "1" ]] && continue
+
+    agent_count=$((agent_count + 1))
+
+    local content
+    content=$(tmux capture-pane -t "$pid" -p 2>/dev/null | tail -3)
+
+    # Match idle prompt patterns for Claude Code, Gemini CLI, and Codex
+    if echo "$content" | grep -qE "Type your message|❯ $|> $"; then
+      idle_list="${idle_list:+$idle_list,}$pid"
+    else
+      busy_list="${busy_list:+$busy_list,}$pid"
+    fi
+  done < <(tmux list-panes -s -t "$session" -F '#{pane_id}|#{pane_dead}' 2>/dev/null)
+
+  local free=$((6 - agent_count))
+  [[ $free -lt 0 ]] && free=0
+
+  local out=""
+  [[ -n "$idle_list" ]] && out="${out} idle-panes:${idle_list}"
+  [[ -n "$busy_list" ]] && out="${out} busy-panes:${busy_list}"
+  out="${out} free-slots:${free}"
+
+  echo "$out"
+}
+
+# Build message — include agent pane ID and pane inventory
 REUSE_HINT=""
 [[ -n "$AGENT_PANE" ]] && REUSE_HINT=" reuse-pane:${AGENT_PANE}"
-MSG="AGENT_PING: job:${JOB_ID}${REUSE_HINT} status:complete ${SUMMARY} — AWAITING_INSTRUCTIONS"
+
+INVENTORY=""
+[[ -n "$NOTIFY_PANE" ]] && INVENTORY=$(compute_pane_inventory "$NOTIFY_PANE")
+
+MSG="AGENT_PING: job:${JOB_ID}${REUSE_HINT} status:complete${INVENTORY} ${SUMMARY} — AWAITING_INSTRUCTIONS"
 
 # Write to pending-pings immediately — persists if live delivery fails
 # (e.g. orchestrator has a dialog open and can't receive keystrokes right now)
