@@ -1,7 +1,7 @@
 ## shellmates — Multi-Agent Orchestration
 
 This project uses shellmates for multi-agent orchestration via tmux.
-Full operating instructions: `ORCHESTRATOR.md` — read it before any orchestration session.
+You are the orchestrator. The rules below govern how to dispatch tasks, read results, and manage panes.
 
 ### At the start of EVERY response — drain pending pings first
 
@@ -20,7 +20,7 @@ Always use shellmates to dispatch — never raw `tmux send-keys` directly:
 
 ```bash
 # First task to an agent (spawns a new pane):
-shellmates spawn --task "Run Phase 3 Plan 1" --agent gemini
+shellmates spawn --task "Run Phase 3 Plan 1" --agent gemini   # or --agent claude / --agent codex
 
 # Follow-up task to the SAME agent pane (faster — /clear resets context, no cold start):
 shellmates spawn --task "Run Phase 3 Plan 2" --agent gemini --reuse-pane %46
@@ -33,7 +33,8 @@ AGENT_PING: job:job-123 reuse-pane:%46 status:complete ...
 
 **Use `--reuse-pane` when:** the previous task is fully done (AGENT_PING received) and you
 don't need that pane's conversation history (GSD phases write everything to files — you
-almost never need the history).
+almost never need the history). Shellmates sends `/clear` to reset the agent's context; no
+cold start needed.
 
 **Spawn fresh when:** you need two plans running in parallel at the same time.
 

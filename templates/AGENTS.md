@@ -59,8 +59,20 @@ The orchestrator types tasks directly into your terminal via `tmux send-keys`. W
 
 ### Completion signal — REQUIRED
 
-After every task (code done, tests run, committed), output:
+After every task (code done, tests run, committed), do these **in order**:
 
+**1. Write your result to the inbox file** (the exact path and format are in the task footer):
+```bash
+mkdir -p ~/.shellmates/inbox && cat > ~/.shellmates/inbox/<JOB_ID>.txt << 'EOF'
+AGENT: codex
+JOB: <JOB_ID>
+STATUS: complete
+CHANGED: <comma-separated file paths, or none>
+RESULT: <≤5 line summary of what was done>
+EOF
+```
+
+**2. Output the completion signal:**
 ```
 PHASE_COMPLETE: Phase N — <one-line summary>
 ```
@@ -70,18 +82,18 @@ Then output:
 AWAITING_INSTRUCTIONS
 ```
 
-**This is how the orchestrator knows you're done.** If you don't output this, it will keep waiting.
+**Writing the inbox file is what notifies the orchestrator.** A background watcher detects the file and delivers an AGENT_PING automatically. `PHASE_COMPLETE` is for terminal visibility only — if you skip the inbox write, the orchestrator will never know you finished.
 
-### Notifying the orchestrator directly (when asked)
+### Direct ping (emergency only)
 
-If the orchestrator explicitly asks you to ping it, run these two commands — the `-l` flag sends the message literally so brackets and colons don't get misinterpreted as terminal escape sequences:
+In normal flow you don't need to do this — writing the inbox file is sufficient. If the orchestrator has explicitly provided its pane address and asked for a manual ping, use the `-l` flag so brackets and colons aren't misinterpreted as terminal escape sequences:
 
 ```bash
-tmux send-keys -l -t orchestra:0.1 "AGENT_PING: job:JOB_ID reuse-pane:%XX status:complete RESULT: [summary]. Files: [list]. Issues: [any]. Tests: [pass/fail]. — AWAITING_INSTRUCTIONS"
-tmux send-keys -t orchestra:0.1 "" Enter
+tmux send-keys -l -t <PANE_ID> "AGENT_PING: job:JOB_ID reuse-pane:%XX status:complete RESULT: [summary]. Files: [list]. Issues: [any]. Tests: [pass/fail]. — AWAITING_INSTRUCTIONS"
+tmux send-keys -t <PANE_ID> "" Enter
 ```
 
-**Two separate calls — always.** The first sends the literal message; the second sends the Enter keypress. Never combine them.
+**Two separate calls — always.** Replace `<PANE_ID>` with the address from your task instructions. **Never guess the pane address** — it is not universally `orchestra:0.1`; it depends on how shellmates was started.
 
 ### Rules
 
@@ -116,7 +128,7 @@ Always use shellmates to dispatch — never raw `tmux send-keys` directly:
 
 ```bash
 # First task to an agent (spawns a new pane):
-shellmates spawn --task "Run Phase 3 Plan 1" --agent gemini
+shellmates spawn --task "Run Phase 3 Plan 1" --agent gemini   # or --agent claude / --agent codex
 
 # Follow-up task to the SAME agent pane (faster — /clear resets context, no cold start):
 shellmates spawn --task "Run Phase 3 Plan 2" --agent gemini --reuse-pane %46
@@ -128,7 +140,8 @@ AGENT_PING: job:job-123 reuse-pane:%46 status:complete ...
 ```
 
 **Use `--reuse-pane` when:** the previous task is fully done (AGENT_PING received) and you
-don't need that pane's conversation history.
+don't need that pane's conversation history. Shellmates sends `/clear` to reset the agent's
+context — no cold start needed.
 
 **Spawn fresh when:** you need two plans running in parallel at the same time.
 

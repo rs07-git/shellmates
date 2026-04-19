@@ -78,24 +78,35 @@ my-project/
 
 ## Multi-Agent Protocol
 
-**You are a sub-agent.** Claude Code is the orchestrator running in pane `orchestra:0.1`.
-It sends you tasks via tmux and monitors your output. Follow these rules exactly.
+**You are a sub-agent.** An orchestrator (Claude Code, another Gemini instance, or Codex) dispatches tasks to you via tmux. Follow these rules exactly.
 
 ### How you receive tasks
 
-Claude types tasks directly into your terminal via `tmux send-keys`. When you see a task appear, treat it as a new prompt and start working.
+Tasks arrive via `@filepath` — the orchestrator has already typed a file path into your input bar and submitted it. When text appears in your terminal, start working on it immediately.
+
+Every task file contains three parts:
+1. A terse communication protocol header (respond like an API, not a human)
+2. The actual task instructions
+3. A **completion footer** — read this carefully. It tells you the exact inbox file path and format you must use to signal completion.
 
 ### Completion signal — REQUIRED
 
-After finishing every task (code written, tests passing, committed), output this exact line as your **final message**:
+When your task is done (code written, tests passing, committed), do these **in order**:
 
-```
-PHASE_COMPLETE: Phase N — <one-line summary of what was done>
+**1. Write your result to the inbox file** (the exact path and format are in the task footer):
+```bash
+mkdir -p ~/.shellmates/inbox && cat > ~/.shellmates/inbox/<JOB_ID>.txt << 'EOF'
+AGENT: gemini
+JOB: <JOB_ID>
+STATUS: complete
+CHANGED: <comma-separated file paths, or none>
+RESULT: <≤5 line summary of what was done>
+EOF
 ```
 
-Example:
+**2. Output the completion signal:**
 ```
-PHASE_COMPLETE: Phase 3 — POST /users endpoint added, validation + tests, all passing
+PHASE_COMPLETE: <task name — from the footer>
 ```
 
 Then output:
@@ -103,25 +114,27 @@ Then output:
 AWAITING_INSTRUCTIONS
 ```
 
-**This is how Claude knows you're done.** It polls your pane looking for `PHASE_COMPLETE`. If you don't output this, Claude will keep waiting.
+**Writing the inbox file is what notifies the orchestrator.** A background watcher detects the file and delivers an AGENT_PING automatically. `PHASE_COMPLETE` is for terminal visibility only — if you skip the inbox write, the orchestrator will never know you finished.
 
-### Notifying Claude directly (when asked)
+### Direct ping (emergency only)
 
-If Claude explicitly asks you to ping it, run these two commands — the `-l` flag sends the message literally so brackets and colons in your output don't get misinterpreted as terminal escape sequences:
+In normal flow you don't need to do this — writing the inbox file is sufficient. If the orchestrator has explicitly provided its pane address and asked for a manual ping, use the `-l` flag so brackets and colons aren't misinterpreted as terminal escape sequences:
 
 ```bash
-tmux send-keys -l -t orchestra:0.1 "AGENT_PING: [task] complete. Files changed: [list]. Issues: [any deviations or problems]. Tests: [pass/fail + counts]. — AWAITING_INSTRUCTIONS"
-tmux send-keys -t orchestra:0.1 "" Enter
+tmux send-keys -l -t <PANE_ID> "AGENT_PING: job:<JOB_ID> reuse-pane:%XX status:complete RESULT: [summary]. Files: [list]. Issues: [any]. Tests: [pass/fail]. — AWAITING_INSTRUCTIONS"
+tmux send-keys -t <PANE_ID> "" Enter
 ```
+
+Replace `<PANE_ID>` with the address from your task instructions. **Never guess the pane address** — it is not universally `orchestra:0.1`; it depends on how shellmates was started.
 
 ### Rules — read these carefully
 
-1. **Never start the next task until Claude sends it.** After PHASE_COMPLETE, wait.
-2. **Always use non-interactive flags.** `npm install --yes`, `apt install -y`, `npx --yes`. Never run a command that pauses for y/n — Claude can't respond to interactive sub-shells.
+1. **Never start the next task until the orchestrator sends it.** After PHASE_COMPLETE, wait.
+2. **Always use non-interactive flags.** `npm install --yes`, `apt install -y`, `npx --yes`. Never run a command that pauses for y/n — the orchestrator can't respond to interactive sub-shells.
 3. **Always commit before signaling PHASE_COMPLETE.** Uncommitted work doesn't count.
 4. **Run `git status --short` after committing** to confirm a clean tree.
 5. **One task at a time.** Don't batch multiple phases into one response.
-6. **Don't start the backend server** (`uvicorn`, `gunicorn`, etc.) unless explicitly told to — it will block your terminal and you won't be able to run further commands.
+6. **Don't start the backend server** (`uvicorn`, `gunicorn`, etc.) unless explicitly told to — it will block your terminal and prevent further commands.
 7. **Read the plan file first.** When told to execute a phase, read `.planning/phases/N-slug/PLAN.md` before writing any code.
 
 ---
@@ -159,7 +172,7 @@ Always use shellmates to dispatch — never raw `tmux send-keys` directly:
 
 ```bash
 # First task to an agent (spawns a new pane):
-shellmates spawn --task "Run Phase 3 Plan 1" --agent gemini
+shellmates spawn --task "Run Phase 3 Plan 1" --agent gemini   # or --agent claude / --agent codex
 
 # Follow-up task to the SAME agent pane (faster — /clear resets context, no cold start):
 shellmates spawn --task "Run Phase 3 Plan 2" --agent gemini --reuse-pane %46
@@ -171,7 +184,8 @@ AGENT_PING: job:job-123 reuse-pane:%46 status:complete ...
 ```
 
 **Use `--reuse-pane` when:** the previous task is fully done (AGENT_PING received) and you
-don't need that pane's conversation history.
+don't need that pane's conversation history. Shellmates sends `/clear` to reset the agent's
+context — no cold start needed.
 
 **Spawn fresh when:** you need two plans running in parallel at the same time.
 
